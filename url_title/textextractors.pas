@@ -55,6 +55,11 @@ function mIRCcolor           (color: tColor): string;
 
 implementation
 
+function cleanHTMLForIRC(buffer: string): string;
+begin
+    result:= trim(resolveXMLents(stripHTML(stripControls(buffer))))
+end;
+
 function mIRCcolor(color: tColor): string;
 begin
     case color of
@@ -104,7 +109,7 @@ begin
         if (pos('submit.pl?op=viewsub', x) > 0) then
             result.site:= siSoySub
         else
-        if (pos('pollbooth.pl?', x) > 0) then
+        if (pos('pollbooth.pl?', x) > 0) and (pos('aid=', x) > 0) then
             result.site:= siSoyPoll
         else
             result.site:= siSoyMain;
@@ -222,7 +227,7 @@ begin
     if sfDev in flags then result+= '(dev) ';
     if sfTMBDev in flags then result+= '(TMB dev) ';
 
-    result+= 'Submission by ' + who + ' ' + mIRCcolor(clGreen) + title + mIRCcolor(clNone) + ': ' + summary;
+    result+= 'Submission by ' + who + ' ' + mIRCcolor(clGreen) + title + mIRCcolor(clNone);// + ': ' + summary;
     result:= reduceWhiteSpace(result)
 end;
 
@@ -236,18 +241,19 @@ begin
     findNext('>', buffer, z);
     inc(z);
     result:= mIRCcolor(clRed) + 'Wiki: ' + mIRCcolor(clGreen) + 
-    clipText(cleanHTMLForIRC(scanToWord('</h1', buffer, z)), 120) + ':' + mIRCcolor(clNone);
+    clipText(cleanHTMLForIRC(scanToWord('</h1', buffer, z)), 69) + ':' + mIRCcolor(clNone);
 //    scanToWord('mw-content-text', buffer, z);
     scanToWord('<p>', buffer, z);
     inc(z, 2);
     result+= ' ' + 
-    clipText(reduceWhiteSpace(stripControls(resolveXMLents(stripHTML(scanToWord('</p', buffer, z))))), 180)
+    clipText(reduceWhiteSpace(cleanHTMLForIRC(scanToWord('</p', buffer, z))), 240)
 end;
 
 function getYouTubeDiz(buffer: string): string;
 var z: dWord = 1;
     y: dWord;
 begin
+  { This is broken and is very similar to the xml scraper which is good enough anyway. }
     scanToWord('meta name="title"', buffer, z);
     findNext('c', buffer, z);
     findNext('"', buffer, z);
@@ -276,7 +282,7 @@ begin
         result:= mIRCcolor(clRed) + 'SN ';
         if sfDev in flags then result+= '(dev) ';
         if sfTMBDev in flags then result+= '(TMB dev) ';
-        result+= 'comment by ' + trim(stripHTML(stripControls(scanToWord('<span', buffer, z)))) + ':' + mIRCcolor(clNone);
+        result+= 'comment by ' + trim(stripHTML(stripControls(scanToWord('<span', buffer, z))));// + ':' + mIRCcolor(clNone);
       { Find the comment }
 {        scanToWord('<div id="comment_', buffer, z);
         findNext  ('>', buffer, z);
@@ -339,7 +345,7 @@ begin
     scanToWord('<b>', buffer, z);
     inc(z, 2);
     comments:= stripControls(scanToWord('</b>', buffer, z));
-    result:= reduceWhiteSpace(mIRCcolor(clBlue) + 'Pipedot Article: ' + mIRCcolor(clGreen) + title + mIRCcolor(clBlue) + ' (' + comments + ' comments) ' + mIRCcolor(clNone) + summary);
+    result:= reduceWhiteSpace(mIRCcolor(clBlue) + 'Pipedot Article: ' + mIRCcolor(clGreen) + title + mIRCcolor(clBlue) + ' (' + comments + ' comments) ');// + mIRCcolor(clNone) + summary);
 end;
 
 function getPipedotComment(buffer: string; flags: kSiteFlags): string;
@@ -370,7 +376,7 @@ begin
      inc(z);
      summary:= clipText(cleanHTMLForIRC(scanToWord('<footer>', buffer, z)), 180);
 }
-     result := reduceWhiteSpace(mIRCcolor(clBlue) + 'Pipedot Comment by ' + who + ': ' + mIRCcolor(clGreen) + title + ' ' + mIRCcolor(clBlue) + score + mIRCcolor(clNone) + ' ' + summary);
+     result := reduceWhiteSpace(mIRCcolor(clBlue) + 'Pipedot Comment by ' + who + ': ' + mIRCcolor(clGreen) + title + ' ' + mIRCcolor(clBlue) + score);// + mIRCcolor(clNone) + ' ' + summary);
 end;
 
 function getXMLtitle(buffer: string): string;

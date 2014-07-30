@@ -41,63 +41,82 @@ type
 
     kIRCclient = class(TComponent)
       public
-        me         : kIrcUser;       // Your user info
-        channels   : tStringList;    // The channels you're in
+        me          : kIrcUser;       // Your user info
+        channels    : tStringList;    // The channels you're in
 
+        onNotice,
         onMessage,                   // Any private message
         onSend,                      // Not implemented yet
         onAction,
         onJoin,
         onPart,
         OnKick,
+        onInvite,
         onTopic,
         OnBan,
-        onUnban      : kMessageEvent;
-        onServerReply: kReplyEvent;  // For the billion different numeric replies
-        onSocket     : kSocketEvent; // When anything goes over the socket
-        onConnect    : kEvent;
+        onNick,
+        onUnban      :  kMessageEvent;
+        onServerReply : kReplyEvent;  // For the billion different numeric replies
+        onSocket      : kSocketEvent; // When anything goes over the socket
+        onConnect     : kEvent;
 
-        onPing       : kEvent;       // You are NOT required to assign these;
-        onPong       : kEvent;       // they're just informative.
-        onError      : kStringEvent;
+        onPing        : kEvent;       // You are NOT required to assign these;
+        onPong        : kEvent;       // they're just informative.
+        onError       : kStringEvent;
 
-        procedure    sayAction         (channel, message: string);
-        procedure    say               (channel, message: string);
-        procedure    writeString       (message: string);
+        autoReconnect : boolean;
 
-        procedure    join              (channel: string);
-        procedure    join              (channelList: tStringList);
-        procedure    part              (channel: string; reason: string = '');
-        procedure    kick              (channel, user: string; reason: string = '');
-        procedure    ban               (channel, mask: string);
-        procedure    unban             (channel, mask: string);
-        procedure    invite            (channel, user: string);
+        haveIdentified: boolean;
+        nickServNick  : string;
+        identString   : string; { This should probably include the /msg NickServ
+                                  because apparently it's not standardized plus
+                                  the whole system is a hack anyway.
 
-        procedure    setTopic          (channel, topic: string);
-        procedure    setMode           (channel, mode, what: string);
+                                  But for now, you just need the password
+                                  (and your nick if you're using a different one). }
 
-        procedure    connect           (host   : string; port: word);
-        procedure    disconnect;
+        autoAuth      : boolean;
+        procedure       sayAction         (channel, message: string);
+        procedure       say               (channel, message: string);
+        procedure       writeString       (message: string);
 
-        function     escapeString      (message: string): string;
-        function     unEscapeString    (message: string): string;
+        procedure       join              (channel: string);
+        procedure       join              (channelList: tStringList);
+        procedure       part              (channel: string; reason: string = '');
+        procedure       kick              (channel, user: string; reason: string = '');
+        procedure       ban               (channel, mask: string);
+        procedure       unban             (channel, mask: string);
+        procedure       invite            (channel, user: string);
 
-        constructor  create;
-        destructor   destroy;
+        procedure       nick              (nick: string);
 
-        procedure    doThings;
+        procedure       setTopic          (channel, topic: string);
+        procedure       setMode           (channel, mode, what: string);
+
+        procedure       connect           (host   : string; port: word);
+        procedure       disconnect        (message: string = '');
+
+        function        escapeString      (message: string): string;
+        function        unEscapeString    (message: string): string;
+
+        constructor     create;
+        destructor      destroy;
+
+        procedure       doThings;
       public
-        procedure    processServerReply(number: word; buffer: string);
+        procedure       processServerReply(number: word; buffer: string);
+        function        getSocket: longInt;
       private
-        theSocket    : TLTcp;
-        bufferIn     : string;
-        bufferOut    : string;
-        procedure    handleMessage     (message: string);
-        procedure    handleError       (const msg: string; aSocket: TLSocket);
-        procedure    processMessageBuffer;
-        procedure    doReceive         (aSocket: tLSocket);
-        procedure    doSend            (aSocket: tLSocket);
-        procedure    connected         (aSocket: tLsocket);
+        theSocket     : TLTcp;
+        bufferIn      : string;
+        bufferOut     : string;
+        procedure       handleMessage     (message: string);
+        procedure       handleError       (const msg: string; aSocket: TLSocket);
+        procedure       processMessageBuffer;
+        procedure       doReceive         (aSocket: tLSocket);
+        procedure       doSend            (aSocket: tLSocket);
+        procedure       connected         (aSocket: tLsocket);
+        procedure       disconnected      (aSocket: tLsocket);
     end;
 
 
@@ -109,6 +128,12 @@ begin
     theSocket.CallAction
 end;
 
+
+function kIRCclient.getSocket: longInt;
+begin
+    result:= theSocket.getRootSock;
+end;
+
 constructor kIRCclient.create;
 begin
     inherited;
@@ -117,11 +142,15 @@ begin
     theSocket.OnCanSend   := @doSend;
     theSocket.OnReceive   := @doReceive;
     theSocket.OnError     := @handleError;
+    theSocket.OnDisconnect:= @Disconnected;
     me.nick               := 'kIRCuser';
     me.host               := 'host';
     me.user               := 'testbot';
     me.realName           := 'teste test';
 //    theSocket.Session     := TLSession.Create(self);
+    autoReconnect         := true;
+    haveIdentified        := false;
+    nickServNick          := 'NickServ';
 
     channels              := tStringList.Create;
     channels.Sorted       := true;
@@ -135,6 +164,11 @@ begin
         theSocket.Free;
     channels.Free;
     inherited
+end;
+
+procedure kIRCclient.nick(nick: string);
+begin
+    writeString('NICK ' + nick)
 end;
 
 procedure kIRCclient.invite(channel, user: string);
@@ -259,6 +293,24 @@ begin
                       onPart(uMessage);
         'TOPIC'  : if onTopic <> nil then
                       onTopic(uMessage);
+        'INVITE' : if onInvite <> nil then
+                      onInvite(uMessage);
+        'NOTICE' : begin
+                       if (uMessage.user.nick = nickServNick) and (identString <> '') and autoAuth and (not haveIdentified) then begin
+                           say(nickServNick, 'identify ' + identString);
+                           HaveIdentified:= true;
+                           writeln('Identified');
+                           join(channels);
+                       end;
+                       if onNotice <> nil then
+                           onNotice(uMessage);
+                   end;
+        'NICK'   : begin
+                       if uMessage.user.nick = me.nick then
+                           me.nick:= uMessage.message;
+                       if onNick <> nil then
+                           onNick(uMessage);
+                   end;
         'PONG'   : if onPong <> nil then // Does this exist? Or does it work like PING?
                       onPong;
     end
@@ -315,15 +367,25 @@ begin
         onConnect
 end;
 
-procedure kIRCclient.disconnect;
+procedure kIRCclient.disconnected(aSocket: TLSocket);
+begin
+    if autoReconnect then
+        connect(aSocket.PeerAddress, aSocket.PeerPort);
+
+end;
+
+procedure kIRCclient.disconnect(message: string);
 begin
     if theSocket.Connected then begin
-        writeString('QUIT');
+        autoReconnect:= false;
+        writeString('QUIT :' + message);
+
         theSocket.Disconnect()
     end
 end;
 
 function kIrcClient.escapeString(message: string): string;
+{ This is mainly for ctcp stuff }
 var z   : dWord = 1;
     y   : dWord;
     bads: set of char = [#0, #10, #13, #20];
@@ -350,6 +412,7 @@ begin
 end;
 
 function kIrcClient.unEscapeString(message: string): string;
+{ Also for ctcp }
 var z   : dWord = 1;
     y   : dWord;
     bads: set of char = [#0, #10, #13];
@@ -380,10 +443,10 @@ procedure kIrcClient.join(channel: string);
 var
     z: integer;
 begin
-    if channels.Find(channel, z) then begin
+//    if channels.Find(channel, z) then begin
         writeString('JOIN ' + channel);
-        channels.Add(channel);
-    end;
+//        channels.Add(channel);
+//    end;
 end;
 
 procedure kIrcClient.join(channelList: tStringList);
@@ -397,10 +460,10 @@ procedure kIrcClient.part(channel: string; reason: string = '');
 var
     z: integer;
 begin
-    if channels.Find(channel, z) then begin
+//    if channels.Find(channel, z) then begin
         writeString('PART ' + channel + ' :' + reason);
-        channels.Delete(z)
-    end
+//        channels.Delete(z)
+//    end
 end;
 
 procedure kIrcClient.kick(channel, user: string; reason: string = '');
@@ -497,7 +560,8 @@ begin
 //        369: ; // RPL_ENDOFWHOWAS     | _"Channel :Users Name"
 //        372: ; // RPL_MOTD            | ":- "
 //        374: ; // RPL_ENDOFINFO       | ":End of /INFO list"
-        376: if channels.Count > 0 then join(channels); // RPL_ENDOFMOTD       | ":End of /MOTD command"
+        { we'll do this onMessage to auth with NickServ before entering channels }
+        376: if (not autoAuth) and (channels.Count > 0) then join(channels); // RPL_ENDOFMOTD       | ":End of /MOTD command"
 //        381: ; // RPLYOUREOPER        | _":You are now an IRC operator"
 //        382: ; // RPLREHASHING        | _" :Rehashing"
 //        391: ; // RPLTIME             | _" :<server local time>"

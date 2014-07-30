@@ -15,15 +15,8 @@ function extractURLs    (buffer: string): tStringList; // Finds URLs within a st
 function isValidUrl     (var buffer: string): boolean; // Doesn't do much
 function urlHasTitle    (url, title: string): boolean; // Compare two strings and see if they're similar
 
-function cleanHTMLForIRC(buffer: string): string;
-
 implementation
 uses kUtils;
-
-function cleanHTMLForIRC(buffer: string): string;
-begin
-    result:= trim(resolveXMLents(stripHTML(stripControls(buffer))))
-end;
 
 function urlHasTitle(url, title: string): boolean;
 { This is supposed to compare the url and title and return true if there are a few

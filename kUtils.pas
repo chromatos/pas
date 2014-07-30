@@ -9,41 +9,56 @@
 unit kUtils;
 
 interface
-uses classes;
+uses classes, sysUtils;
 
 type
     kStrings = array of string;
 
-function  splitByType     (yourString: string; skipWhiteSpace: boolean = true;
-                           alphaNum: boolean = true): tStringList;
+function  splitByType      (yourString: string; skipWhiteSpace: boolean = true;
+                            alphaNum: boolean = true): tStringList;
 
-function  split           (delimiter: char; yourString: string): tStringList; // These are unnecessary because
-function  join            (delimiter: char; stringList: tStringList): string; // we're using tStringList now.
-function  split           (delimiter: char; yourString: string): kStrings;
+function  split            (delimiter: char; yourString: string): tStringList; // These are unnecessary because
+function  join             (delimiter: char; stringList: tStringList): string; // we're using tStringList now.
+function  split            (delimiter: char; yourString: string): kStrings;
 
-function  splitBySequence (sequence, buffer: string): tStringList;
+function  splitBySequence  (sequence, buffer: string): tStringList;
 
-function  scanByDelimiter (delimiter: char; buffer: string; var position: dWord): string;
-function  scanToWord      (aWord: string; buffer: string; var position: dWord; ignoreCase: boolean = true): string;
-procedure findNext        (delimiter: char; buffer: string; var position: dWord);
+function  scanByDelimiter  (delimiter: char; buffer: string; var position: dWord): string;
+function  scanToWord       (aWord: string; buffer: string; var position: dWord; ignoreCase: boolean = true): string;
+procedure findNext         (delimiter: char; buffer: string; var position: dWord);
 
-function  wordPresent     (yourWord, buffer: string; caseSensitive: boolean = false): boolean;
-function  findWord        (yourWord, buffer: string; caseSensitive: boolean = false): dWord;
-function  wordPresent     (yourWord: string; strings: tStringList; caseSensitive: boolean = false): boolean; overload;
-function  findWord        (yourWord: string; strings: tStringList; caseSensitive: boolean = false): dWord; overload;
+function  wordPresent      (yourWord, buffer: string; caseSensitive: boolean = false): boolean;
+function  findWord         (yourWord, buffer: string; caseSensitive: boolean = false): dWord;
+function  wordPresent      (yourWord: string; strings: tStringList; caseSensitive: boolean = false): boolean; overload;
+function  findWord         (yourWord: string; strings: tStringList; caseSensitive: boolean = false): dWord; overload;
 
-function  countDelimiters (delimiter: char; yourString: string): dWord;
-function  ciPos           (subString, buffer: string): dWord; // case-insensitive Pos()
+function  countDelimiters  (delimiter: char; yourString: string): dWord;
+function  ciPos            (subString, buffer: string): dWord; // case-insensitive Pos()
 
-function  isNumeric       (buffer: string): boolean;
+function  isNumeric        (buffer: string): boolean;
 
-function  stripControls   (buffer: string): string;
-function  reduceWhiteSpace(buffer: string): string;
-function  clipText        (buffer: string; newLength: word): string;
+function  stripControls    (buffer: string): string;
+function  stripSomeControls(buffer: string): string;
+function  reduceWhiteSpace (buffer: string): string;
+function  clipText         (buffer: string; newLength: word): string;
 
-function  reverse         (buffer: string): string;
+function  reverse          (buffer: string): string;
+
+function  readFile         (fileName: string): string;
 
 implementation
+
+function readFile(fileName: string): string;
+var x: tFileStream;
+begin
+    if FileExists(fileName) then begin
+        x:= TFileStream.create(fileName, fmOpenRead);
+        setLength(result, x.Size);
+        x.Read(result[1], x.Size);
+        x.Free
+    end else
+        result:= ''
+end;
 
 function countDelimiters(delimiter: char; yourString: string): dWord;
 var z: dWord = 0;
@@ -81,6 +96,24 @@ begin
             if buffer[z] in [#9,#10,#13] then
             begin
                 result[y]:= ' ';
+                inc(y)
+            end;
+        setLength(result, y-1)
+    end
+end;
+
+function  stripSomeControls(buffer: string): string;
+var z: dWord = 1;
+    y: dWord = 1;
+begin
+    if buffer <> '' then begin
+        setLength(result, length(buffer));
+        for z:= 1 to length(buffer) do
+            if not(buffer[z] in [#0, #9..#13]) then { #0 doesn't matter but some
+                                                      people think null-terminated
+                                                      strings are reasonable. }
+            begin
+                result[y]:= buffer[z];
                 inc(y)
             end;
         setLength(result, y-1)

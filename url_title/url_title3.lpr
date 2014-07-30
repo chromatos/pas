@@ -121,7 +121,6 @@ begin
                     if isXMLish in fileProps then begin
                         case theSite.site of
                             siWhatever,
-                            siPedia,
                             siSoyMain,
                             siYouTube    : title:= getXMLtitle(content);
                             siSoyArticle : title:= getSoylentArticle(content, theSite.flags);
@@ -132,7 +131,7 @@ begin
                             siPipeArticle: title:= getPipedotArticle(content, theSite.flags);
                             siPipeComment: title:= getPipedotComment(content, theSite.flags);
 
-//                            siPedia      : title:= getWikiTextia(content); // Broken for mobile pages
+                            siPedia      : title:= getWikiTextia(content); // Broken for mobile pages
 
 //                            siYouTube    : title:= getYouTubeDiz(content); // Broken; the XML one is good enough
 
