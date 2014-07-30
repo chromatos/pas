@@ -75,7 +75,6 @@ type
                                   But for now, you just need the password
                                   (and your nick if you're using a different one). }
 
-        autoAuth      : boolean;
         procedure       sayAction         (channel, message: string);
         procedure       say               (channel, message: string);
         procedure       writeString       (message: string);
@@ -296,7 +295,7 @@ begin
         'INVITE' : if onInvite <> nil then
                       onInvite(uMessage);
         'NOTICE' : begin
-                       if (uMessage.user.nick = nickServNick) and (identString <> '') and autoAuth and (not haveIdentified) then begin
+                       if (uMessage.user.nick = nickServNick) and (identString <> '') and (not haveIdentified) then begin
                            say(nickServNick, 'identify ' + identString);
                            HaveIdentified:= true;
                            writeln('Identified');
@@ -561,7 +560,7 @@ begin
 //        372: ; // RPL_MOTD            | ":- "
 //        374: ; // RPL_ENDOFINFO       | ":End of /INFO list"
         { we'll do this onMessage to auth with NickServ before entering channels }
-        376: if (not autoAuth) and (channels.Count > 0) then join(channels); // RPL_ENDOFMOTD       | ":End of /MOTD command"
+        376: if (nickServNick = '') and (channels.Count > 0) then join(channels); // RPL_ENDOFMOTD       | ":End of /MOTD command"
 //        381: ; // RPLYOUREOPER        | _":You are now an IRC operator"
 //        382: ; // RPLREHASHING        | _" :Rehashing"
 //        391: ; // RPLTIME             | _" :<server local time>"
