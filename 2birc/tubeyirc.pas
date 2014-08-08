@@ -299,7 +299,7 @@ begin
                            say(nickServNick, 'identify ' + identString);
                            HaveIdentified:= true;
                            writeln('Identified');
-                           join(channels);
+                           if channels.Count > 0 then join(channels);
                        end;
                        if onNotice <> nil then
                            onNotice(uMessage);

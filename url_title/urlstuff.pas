@@ -28,12 +28,20 @@ var u,
     ti: dWord = 0;
     c : dWord = 0;
 begin
-    u:= splitByType(lowerCase(url));
-    t:= splitByType(lowerCase(title));
-    for ui:= 0 to u.Count-1 do
-        for ti:= t.Count-1 downto 0 do; { titles will usually be at the end; this may save a billionth of a second }
-        if u.Strings[ui] = t.Strings[ti] then
-            inc(c);
+    url   := lowerCase(url);
+    title := lowerCase(title);
+writeln('splitting url');
+    u     := splitByType(url);
+writeln('splitting title');
+    t     := splitByType(title);
+writeln('done. comparing');
+    if (u.count > 5) and (t.count < 5) then begin
+        for ui:= 0 to u.Count-1 do
+            for ti:= t.Count-1 downto 0 do; { titles will usually be at the end; this may save a billionth of a second }
+            if u.Strings[ui] = t.Strings[ti] then
+                inc(c);
+    end;
+writeln('done');
     result:= c > 5;
     u.free;
     t.free

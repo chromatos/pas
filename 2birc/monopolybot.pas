@@ -13,7 +13,8 @@ uses
   Classes, SysUtils, process, baseunix, CustApp, tubeyIRC, kUtils, url_title4;
 
 const
-    logFile    = '/home/b008135/monopo.log';
+    root       = '/home/toobee/';
+    logFile    = root + '/monopo.log';
     sourceLink = 'https://github.com/chromatos/pas/tree/master/2birc';
 
 type
@@ -190,10 +191,11 @@ begin
                            bot.setMode(message.channel, '-v', message.user.nick)
                        else
                            bot.setMode(message.channel, '-v', pars);
+        'source' : bot.say(message.channel, 'Source: ' + sourceLink);
 
         'nick'   : if authed then bot.nick(pars);
         'help'   : if pars = '' then
-                       bot.say(message.channel, '[join; part; invite] [s/say; d/do; r; rdo] If you''re special, then [sayto; doto] [(-)o; (-)v] [nick] [restart; :q!]');
+                       bot.say(message.channel, '[join; part; invite] [s/say; d/do; r; rdo] and if you''re special, then [sayto; doto] [(-)o; (-)v] [nick] [restart; :q!]');
     end;
 end;
 
@@ -204,10 +206,10 @@ begin
 
     if (message.message[1] = '/') and (length(message.message) > 1) then
         doCommand(message)
-    else if wordPresent('source', message.message) and (mfHighlight in message.flags) then
-        bot.say(message.channel, 'Source: ' + sourceLink)
     else
         if length(message.message) > 5 then showTitles(message);
+    if (ciPos('bacon--', message.message) = 1) and (message.channel = '##') then
+        bot.say('##', 'bacon++ # bacon patrol');
 end;
 
 procedure tMonopolyBot.handleKick(message: kIrcMessage);
@@ -244,7 +246,7 @@ writeln('Checking options');
 writeln('Instantiating');
     bot                := kIRCclient.create;
     bot.me.user        := 'chromas';
-    bot.me.nick        := 'monopoly';
+    bot.me.nick        := 'testenopoly';
     bot.me.realName    := 'A Pascal robot';
     if FileExists(logFile + '.channels') then begin
         bot.channels.LoadFromFile(logFile + '.channels');
@@ -259,13 +261,14 @@ writeln('Instantiating');
     bot.onSocket       := @handleSocket;
     bot.onInvite       := @handleInvite;
     bot.onJoin         := @handleJoin;
-    bot.identString    := readFile('/home/b008135/.sn.irc.p');
+    bot.identString    := readFile(root+'.sn.irc.p');
 
     if not FileExists(logFile) then
         logger:= tFileStream.Create(logFile, fmCreate or fmOpenWrite)
     else
         logger:= tFileStream.Create(logFile, fmOpenWrite);
 
+    try
 writeln('Connecting');
     bot.connect('irc.sylnt.us', 6667);
     mode:= bmStopped;
@@ -282,8 +285,11 @@ writeln('Connected!');
     end;
 writeln('Exited main loop');
 
-logger.Free;
     // stop program loop
+
+    finally
+        logger.Free;
+    end;
     if mode = bmRestarting then begin
         writeln('Restarting');
         bot.channels.SaveToFile(logFile + '.channels');

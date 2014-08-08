@@ -200,8 +200,7 @@ var numbers : set of char = ['0'..'9'];
     x       : dWord = 0;
 begin
     z:= 1;
-    if splitByType = nil then
-        splitByType:= tStringList.Create;
+    splitByType:= tStringList.Create;
 
     if alphaNum then begin
         Numbers:= Numbers + Letters;
@@ -216,7 +215,7 @@ begin
             '['..'`','{'..'~': charType:= symbols;
         end;
         y:= z;
-        while (yourString[z] in charType) and (z < length(yourString)) do
+        while (yourString[z] in charType) and (z <= length(yourString)) do
             inc(z);
         if skipWhiteSpace and (charType = whitey) then
             continue;
