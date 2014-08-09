@@ -13,6 +13,7 @@ uses classes, sysUtils;
 
 type
     kStrings = array of string;
+    kCharSet = set of char;
 
 function  splitByType      (yourString: string; skipWhiteSpace: boolean = true;
                             alphaNum: boolean = true): tStringList;
@@ -39,6 +40,7 @@ function  isNumeric        (buffer: string): boolean;
 
 function  stripControls    (buffer: string): string;
 function  stripSomeControls(buffer: string): string;
+function  stripSet         (theSet: kCharSet; buffer: string): string;
 function  reduceWhiteSpace (buffer: string): string;
 function  clipText         (buffer: string; newLength: word): string;
 
@@ -47,6 +49,24 @@ function  reverse          (buffer: string): string;
 function  readFile         (fileName: string): string;
 
 implementation
+
+function stripSet(theSet: kCharSet; buffer: string): string;
+var z: dWord = 1;
+    y: dWord;
+begin
+    while z < length(buffer) do begin
+        if buffer[z] in theSet then begin
+            y:= z;
+            while (buffer[z] in theSet) and (z < length(buffer)) do
+                inc(z);
+            if buffer[z] in theSet then
+                inc(z);
+            result += buffer[y..z-1]
+        end else
+            while not(buffer[z] in theSet) and (z < length(buffer)) do
+                inc(z)
+    end
+end;
 
 function readFile(fileName: string): string;
 var x: tFileStream;
@@ -198,6 +218,7 @@ var numbers : set of char = ['0'..'9'];
     z,
     y       : integer;
     x       : dWord = 0;
+    herp    : boolean = false;
 begin
     z:= 1;
     splitByType:= tStringList.Create;
@@ -213,15 +234,22 @@ begin
             #9..#13,' '      : charType:= whitey;
             '!'..'/',':'..'@',
             '['..'`','{'..'~': charType:= symbols;
+            else
+                herp:= true;
         end;
-        y:= z;
-        while (yourString[z] in charType) and (z <= length(yourString)) do
-            inc(z);
-        if skipWhiteSpace and (charType = whitey) then
-            continue;
+        if not herp then begin
+            y:= z;
+            while (yourString[z] in charType) and (z <= length(yourString)) do
+                inc(z);
+            if skipWhiteSpace and (charType = whitey) then
+                continue;
 
-        splitByType.Append(yourString[y..z-1]);
-        inc(x)
+            splitByType.Append(yourString[y..z-1]);
+            inc(x)
+        end else begin
+            inc(z);
+            herp:= false
+        end
     end
 end;
 

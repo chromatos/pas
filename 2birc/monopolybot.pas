@@ -24,7 +24,6 @@ type
 
     tMonopolyBot = class(TCustomApplication)
         bot       : kIRCclient;
-//        proc: TProcess;
 
         procedure   doCommand    (message: kIrcMessage);
         procedure   handleInvite (message: kIrcMessage);
@@ -35,7 +34,6 @@ type
         procedure   handleSocket (message: string; x: boolean);
         procedure   switchTitles (active: boolean);
         procedure   showTitles   (message: kIrcMessage);
-//        procedure   titleCallBack;
 
       protected
         procedure   DoRun;override;

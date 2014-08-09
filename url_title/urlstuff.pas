@@ -22,29 +22,23 @@ function urlHasTitle(url, title: string): boolean;
 { This is supposed to compare the url and title and return true if there are a few
   matching words. The idea is to only show titles for urls that don't already contain
   them; however, it just always returns false. }
-var u,
-    t : tStringList;
-    ui: dWord = 0;
+var t : tStringList;
     ti: dWord = 0;
     c : dWord = 0;
 begin
-    url   := lowerCase(url);
-    title := lowerCase(title);
-writeln('splitting url');
-    u     := splitByType(url);
-writeln('splitting title');
-    t     := splitByType(title);
-writeln('done. comparing');
-    if (u.count > 5) and (t.count < 5) then begin
-        for ui:= 0 to u.Count-1 do
-            for ti:= t.Count-1 downto 0 do; { titles will usually be at the end; this may save a billionth of a second }
-            if u.Strings[ui] = t.Strings[ti] then
-                inc(c);
+    if length(title) > 15 then begin
+        url   := lowerCase(url);
+        title := lowerCase(stripControls(title));
+        t     := splitByType(title, true, false);
+
+        if (t.count > 3) then
+            for ti:= 0 to t.Count-1 do { titles will usually be at the end; this may save a billionth of a second }
+                if Pos(t.Strings[ti], url) > 0 then
+                    inc(c);
+        result:= c > 5;
+        t.free
+
     end;
-writeln('done');
-    result:= c > 5;
-    u.free;
-    t.free
 end;
 
 function stripUrlShit(buffer: string): string;
