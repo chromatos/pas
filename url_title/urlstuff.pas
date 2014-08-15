@@ -32,7 +32,7 @@ begin
         t     := splitByType(title, true, false);
 
         if (t.count > 3) then
-            for ti:= 0 to t.Count-1 do { titles will usually be at the end; this may save a billionth of a second }
+            for ti:= 0 to t.Count-1 do
                 if Pos(t.Strings[ti], url) > 0 then
                     inc(c);
         result:= c > 5;
