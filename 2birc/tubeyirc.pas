@@ -59,6 +59,7 @@ type
         onServerReply : kReplyEvent;  // For the billion different numeric replies
         onSocket      : kSocketEvent; // When anything goes over the socket
         onConnect     : kEvent;
+        onDisconnect  : kEvent;
 
         onPing        : kEvent;       // You are NOT required to assign these;
         onPong        : kEvent;       // they're just informative.
@@ -109,6 +110,8 @@ type
         theSocket     : TLTcp;
         bufferIn      : string;
         bufferOut     : string;
+
+        lastMessage   : dWord;
         procedure       handleMessage     (message: string);
         procedure       handleError       (const msg: string; aSocket: TLSocket);
         procedure       processMessageBuffer;
@@ -124,7 +127,12 @@ implementation
 
 procedure kIRCclient.doThings;
 begin
-    theSocket.CallAction
+    theSocket.CallAction;
+    if lastMessage > 3200 then begin
+        writeString('PING :Don''t hold out on me, man!');
+        lastMessage:= 0; // Should be cleared anyway but, you know...just in case
+    end else
+        inc(lastMessage)
 end;
 
 
@@ -229,6 +237,7 @@ begin
         else
             delete(bufferOut, 1, count)
     end;
+    lastMessage:= 0
 end;
 
 procedure kIRCclient.handleMessage(message: string);
@@ -369,8 +378,10 @@ end;
 procedure kIRCclient.disconnected(aSocket: TLSocket);
 begin
     if autoReconnect then
-        connect(aSocket.PeerAddress, aSocket.PeerPort);
-
+        connect(aSocket.PeerAddress, aSocket.PeerPort)
+    else
+        if onDisconnect <> nil then
+            onDisconnect()
 end;
 
 procedure kIRCclient.disconnect(message: string);

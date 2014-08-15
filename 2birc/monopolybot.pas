@@ -13,8 +13,8 @@ uses
   Classes, SysUtils, process, baseunix, CustApp, tubeyIRC, kUtils, url_title4;
 
 const
-    root       = '/home/toobee/';
-    logFile    = root + '/monopo.log';
+    root       = '/home/b008135/';
+    logFile    = root + 'monopo.log';
     sourceLink = 'https://github.com/chromatos/pas/tree/master/2birc';
 
 type
@@ -25,15 +25,16 @@ type
     tMonopolyBot = class(TCustomApplication)
         bot       : kIRCclient;
 
-        procedure   doCommand    (message: kIrcMessage);
-        procedure   handleInvite (message: kIrcMessage);
-        procedure   handleMessage(message: kIrcMessage);
-        procedure   handleKick   (message: kIrcMessage);
-        procedure   handleJoin   (message: kIrcMessage);
+        procedure   doCommand       (message: kIrcMessage);
+        procedure   handleInvite    (message: kIrcMessage);
+        procedure   handleMessage   (message: kIrcMessage);
+        procedure   handleKick      (message: kIrcMessage);
+        procedure   handleJoin      (message: kIrcMessage);
         procedure   handleConnect;
-        procedure   handleSocket (message: string; x: boolean);
-        procedure   switchTitles (active: boolean);
-        procedure   showTitles   (message: kIrcMessage);
+        procedure   handleDisconnect;
+        procedure   handleSocket    (message: string; x: boolean);
+        procedure   switchTitles    (active: boolean);
+        procedure   showTitles      (message: kIrcMessage);
 
       protected
         procedure   DoRun;override;
@@ -81,7 +82,7 @@ begin
     if  (ciPos('bender', message.user.user) = 0) and (ciPos('sedbot', message.user.user) = 0)
     and (ciPos('exec', message.user.user) = 0) and (ciPos('ciri', message.user.user) = 0)
     and (ciPos('aqu4', message.user.user) = 0)
-    and (message.message[1] <> '.') then begin
+    and not(message.message[1] in ['.','!','$']) then begin
         x:= getTitles(message.message, flags);
         if x.count > 0 then
             for z:= 0 to x.count - 1 do
@@ -221,6 +222,11 @@ begin
     mode:= bmRunning;
 end;
 
+procedure tMonopolyBot.handleDisconnect;
+begin
+    mode:= bmRestarting
+end;
+
 procedure tMonopolyBot.DoRun;
 var
     ErrorMsg  : String;
@@ -244,7 +250,7 @@ writeln('Checking options');
 writeln('Instantiating');
     bot                := kIRCclient.create;
     bot.me.user        := 'chromas';
-    bot.me.nick        := 'testenopoly';
+    bot.me.nick        := 'monopoly';
     bot.me.realName    := 'A Pascal robot';
     if FileExists(logFile + '.channels') then begin
         bot.channels.LoadFromFile(logFile + '.channels');
