@@ -156,7 +156,11 @@ begin
                        mode:= bmRestarting;
                    end;
         's',
-        'say'    : if (pars[1] in ['.','!','$', '~']) and not authed then
+        'say'    : if (pars[1] in ['.','!','$', '~']) then
+                       if not authed then begin
+                           exit
+                       end
+                       else
                        bot.say(message.channel, pars);
         'd',
         'do'     : bot.sayAction(message.channel, pars);
