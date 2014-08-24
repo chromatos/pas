@@ -156,12 +156,12 @@ begin
                        mode:= bmRestarting;
                    end;
         's',
-        'say'    : if (pars[1] in ['.','!','$', '~']) then
-                       if not authed then begin
+        'say'    : begin if (pars[1] in ['.','!','$', '~']) then begin
+                       if not authed then
                            exit
-                       end
-                       else
+                       end;
                        bot.say(message.channel, pars);
+                   end;
         'd',
         'do'     : bot.sayAction(message.channel, pars);
         'invite' : bot.invite(scanByDelimiter(' ', pars, z), pars[z..length(pars)]);
