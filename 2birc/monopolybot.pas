@@ -82,7 +82,7 @@ begin
     if  (ciPos('bender', message.user.user) = 0) and (ciPos('sedbot', message.user.user) = 0)
     and (ciPos('exec', message.user.user) = 0) and (ciPos('ciri', message.user.user) = 0)
     and (ciPos('aqu4', message.user.user) = 0)
-    and not(message.message[1] in ['.','!','$']) then begin
+    and not(message.message[1] in ['.','!','$', '~']) then begin
         x:= getTitles(message.message, flags);
         if x.count > 0 then
             for z:= 0 to x.count - 1 do
@@ -156,7 +156,8 @@ begin
                        mode:= bmRestarting;
                    end;
         's',
-        'say'    : bot.say(message.channel, pars);
+        'say'    : if (pars[1] in ['.','!','$', '~']) and not authed then
+                       bot.say(message.channel, pars);
         'd',
         'do'     : bot.sayAction(message.channel, pars);
         'invite' : bot.invite(scanByDelimiter(' ', pars, z), pars[z..length(pars)]);
@@ -170,6 +171,8 @@ begin
                        stuff:= scanByDelimiter(' ', pars, z);
                        bot.sayAction(stuff, pars[z..length(pars)])
                    end;
+        'topic'  : if authed then
+                       bot.setTopic(message.channel, pars);
         'o'      : if authed then
                        if pars = '' then
                            bot.setMode(message.channel, '+o', message.user.nick)
@@ -194,7 +197,7 @@ begin
 
         'nick'   : if authed then bot.nick(pars);
         'help'   : if pars = '' then
-                       bot.say(message.channel, '[join; part; invite] [s/say; d/do; r; rdo] and if you''re special, then [sayto; doto] [(-)o; (-)v] [nick] [restart; :q!]');
+                       bot.say(message.channel, '[join; part; invite] [s,say; d,do; r; rdo] and if you''re special, then [sayto; doto] [(-)o; (-)v] [topic] [nick] [restart; :q!]');
     end;
 end;
 
