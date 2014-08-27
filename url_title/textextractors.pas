@@ -123,7 +123,8 @@ begin
             result.site:= siPipeArticle
         else result.site:= siWhatever
     end
-    else if (pos('wikipedia.org', y) > 0) or (pos('wiktionary.org', y) > 0) then
+    else if (pos('wikipedia.org', y) > 0) or (pos('wiktionary.org', y) > 0)
+         or (pos('wikia.org', y) > 0)then
         result.site:= siPedia
     else if pos('youtube.com', y) > 0 then
         result.site:= siYouTube
