@@ -1,8 +1,18 @@
-program url_title;
+unit url_title4;
 {$mode objfpc}{$H+}
 
+interface
 uses
     Classes, SysUtils, unix, kUtils, urlStuff, textExtractors;
+
+type kSomeFlags = set of (gtHttp, gtHttps, gtFtp, gtGopher);
+
+function getTitles(buffer: string; someFlags: kSomeFlags): tStringList;
+
+
+
+implementation
+
 
 function isSafe(buffer: string): boolean;
 begin
@@ -20,7 +30,7 @@ end;
 
 function doRequest(var uri: string; baseName: string; out props: kFileProperties; out buffer: string): kRequestResult;
 const
-    uaString = 'monopoly/1 (Mozilla Gecko Netscape lynx links2 Firefox IE safari konqueror opera chrome googlebot bingbot)';
+    uaString = 'monopoly/2 (Mozilla Gecko Netscape lynx links2 Firefox IE safari konqueror opera chrome googlebot bingbot)';
 var aFile : tStringList;
     z     : dWord;
     redirs: byte = 0;
@@ -79,16 +89,22 @@ begin
 
 end;
 
-procedure doThings(aFile: string);
-var z     : dWord;
-    buffer: string;
+function getTitles(buffer: string; someFlags: kSomeFlags): tStringList;
+const
+    a = '/tmp/titlebot.';
+var z            : dWord;
     oldUri       : string          = '';
     title        : string          = '';
     content      : string          = '';
+    aFile        : string          = '';
+//    user,
+//    channel,
+    message      : string;
     lines        : tStringList;
     theSite      : kSite;
     fileProps    : kFileProperties;
     requestResult: kRequestResult;
+    DoABarrelRoll: boolean = true;
 begin
   { A little hackishness. This was the only way loading files would work before
     I figured out files don't work well in global space. I'm not going to change
@@ -97,16 +113,23 @@ begin
   { Oh yeah, the real hack is curl --> files --> here instead of using pipes or
     learning SSL. }
     lines:= TStringList.Create;
-    lines.LoadFromFile(aFile);
-    if FileExists(aFile) then DeleteFile(aFile);
-    buffer:= lines.text;
-    lines.Clear;
 
-    lines:= extractURLs(buffer);
+//    readLn(buffer);
+//    z:= pos(#9, buffer);
+//    if z = 0 then exit
+//    else z:= 1;
+
+//    user   := scanByDelimiter(#9, buffer, z);
+//    channel:= scanByDelimiter(#9, buffer, z);
+//    message:= scanByDelimiter(#9, buffer, z);
+    aFile:= a + '.' + intToStr(random(65535));
+    lines.clear;
+    lines:= extractURLs(buffer[z+1..length(buffer)]);
+    result:= tStringList.Create;
     if lines.count > 0 then
         for z:= 0 to lines.count-1 do begin
             buffer := lines.Strings[z];
-            if (ciPos('http:/', buffer) > 0) or (ciPos('https:/', buffer) > 0) then begin
+            if ((gtHttp in someFlags) and (ciPos('http:/', buffer) > 0)) or ((gtHttps in someFlags) and (ciPos('https:/', buffer) > 0)) then begin
                 oldUri := buffer;
                 requestResult:= doRequest(buffer, aFile, fileProps, content);
                 if FileExists(aFile + '.head') then DeleteFile(aFile + '.head');
@@ -140,7 +163,7 @@ begin
                         title:= getExcerpt(content, 32);
                     end else
                         ; // do stuff
-{                    if urlHasTitle(oldUri, title) then
+    {                if urlHasTitle(oldUri, title) then
                         title:= '';} // Broken because urlHasTitle() always returns false
 
                     if buffer <> oldUri then title+= ' ( '+stripControls(buffer)+' )';
@@ -149,13 +172,14 @@ begin
             { ':'#9 allows the IRC bot to skip error messages, even though they should be
               going to stdErr, anyway. Apparently I'm doin' it wrong in KVIrc. }
             if title <> '' then
-                writeln(':', #9, title);
+                result.Append(title)
         end
 end;
-
-
+{
+var
+    buffer: string = '';
 begin
-
+    Randomize;
 { Have to put everything into a function otherwise all kinds of errors pop up,
   especially around files. I assume it's due to the way globals are stored
   but I'm not going to check. }
@@ -163,7 +187,10 @@ begin
 { The reason for using a file is so I don't have to escape the strings
   (and I don't recall) if thee's a way in KVIrc to pipe stuff into stdIn on processes. }
 
-doThings(paramStr(1));
-
+  while buffer <> 'QUIT' do begin
+      readLn(buffer);
+      doThings(buffer);
+  end;
+}
 end.
 

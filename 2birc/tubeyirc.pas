@@ -308,10 +308,10 @@ begin
                            say(nickServNick, 'identify ' + identString);
                            HaveIdentified:= true;
                            writeln('Identified');
-                           if channels.Count > 0 then join(channels);
+                           if channels.Count > 0 then join(channels)
                        end;
                        if onNotice <> nil then
-                           onNotice(uMessage);
+                           onNotice(uMessage)
                    end;
         'NICK'   : begin
                        if uMessage.user.nick = me.nick then

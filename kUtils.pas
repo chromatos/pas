@@ -25,6 +25,7 @@ function  split            (delimiter: char; yourString: string): kStrings;
 function  splitBySequence  (sequence, buffer: string): tStringList;
 
 function  scanByDelimiter  (delimiter: char; buffer: string; var position: dWord): string;
+function  scanByDelimiters (delimiter: kCharSet; buffer: string; var position: dWord): string;
 function  scanToWord       (aWord: string; buffer: string; var position: dWord; ignoreCase: boolean = true): string;
 procedure findNext         (delimiter: char; buffer: string; var position: dWord);
 
@@ -33,12 +34,14 @@ function  findWord         (yourWord, buffer: string; caseSensitive: boolean = f
 function  wordPresent      (yourWord: string; strings: tStringList; caseSensitive: boolean = false): boolean; overload;
 function  findWord         (yourWord: string; strings: tStringList; caseSensitive: boolean = false): dWord; overload;
 
+function  containsWords    (subStrings: tStringList; buffer: string; caseSensitive: boolean = false): boolean;
+
 function  countDelimiters  (delimiter: char; yourString: string): dWord;
 function  ciPos            (subString, buffer: string): dWord; // case-insensitive Pos()
 
 function  isNumeric        (buffer: string): boolean;
 
-function  stripControls    (buffer: string): string;
+{function  stripControls    (buffer: string): string;}
 function  stripSomeControls(buffer: string): string;
 function  stripSet         (theSet: kCharSet; buffer: string): string;
 function  reduceWhiteSpace (buffer: string): string;
@@ -101,7 +104,7 @@ begin
 end;
 
 
-function stripControls(buffer: string): string;
+{function stripControls(buffer: string): string;
 var z: dWord = 1;
     y: dWord = 1;
 begin
@@ -120,18 +123,16 @@ begin
             end;
         setLength(result, y-1)
     end
-end;
+end;}
 
-function  stripSomeControls(buffer: string): string;
+function stripSomeControls(buffer: string): string;
 var z: dWord = 1;
     y: dWord = 1;
 begin
     if buffer <> '' then begin
         setLength(result, length(buffer));
         for z:= 1 to length(buffer) do
-            if not(buffer[z] in [#0, #9..#13]) then { #0 doesn't matter but some
-                                                      people think null-terminated
-                                                      strings are reasonable. }
+            if not(buffer[z] in [#9..#13]) then
             begin
                 result[y]:= buffer[z];
                 inc(y)
@@ -318,6 +319,32 @@ begin
     end
 end;
 
+function scanByDelimiters(delimiter: kCharSet; buffer: string; var position: dWord): string;
+{ Returns the portion of a string from Position to the next delimiter.
+  The position of the character following the space is returned in Position
+  for Looping. }
+var endPos: dWord;
+begin
+    if position < length(buffer) then begin
+        endPos:= position;
+        while (endPos < length(buffer)) and (not(buffer[endPos] in delimiter)) do
+            inc(endPos);
+//            findNext(delimiter, buffer, endPos);
+
+        if (endPos > position) then
+        begin
+            if endPos = length(buffer) then
+                inc(endPos);
+            scanByDelimiters:= buffer[position..endPos-1]
+        end
+
+        else if (endPos = position) then // I suppose I could take out this check, assuming
+            scanByDelimiters:= buffer[position..endPos]; // the difference won't become negative
+        position:= endPos + 1
+    end
+end;
+
+
 function scanToWord(aWord: string; buffer: string; var position: dWord; ignoreCase: boolean = true): string;
 var z: dWord;
     a,
@@ -415,6 +442,20 @@ begin
         wordPresent:= true
     else
         wordPresent:= false
+end;
+
+function containsWords(subStrings: tStringList; buffer: string; caseSensitive: boolean = false): boolean;
+{ Inconsistent naming I know; don't care. Going to rewrite the entire ubit in a bit to be less stupid anyway. }
+var z: dWord = 0;
+    y: boolean = false;
+begin
+    while (z < subStrings.Count) and (not y) do
+    begin
+        y:= pos(subStrings.Strings[z], buffer) > 1;
+        if y then writeln(#9'ignored string: ', subStrings.Strings[z]);
+        inc(z)
+    end;
+    result:= y
 end;
 
 function isNumeric(buffer: string): boolean;

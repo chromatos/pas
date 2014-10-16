@@ -40,7 +40,7 @@ function getSoylentSubmission(buffer: string; flags: kSiteFlags): string;
 function getPipedotArticle   (buffer: string; flags: kSiteFlags): string;
 function getPipedotComment   (buffer: string; flags: kSiteFlags): string;
 
-function getWikiTextia       (buffer: string): string;
+function getWikiTextia       (buffer: string; anchor: string): string;
 function getYouTubeDiz       (buffer: string): string;
 
 
@@ -55,9 +55,19 @@ function mIRCcolor           (color: tColor): string;
 
 implementation
 
+const
+    nothing_Error = 'nothing for you to see here';
+var iCantStrings: tStringList;
+
+function iCant(): string;
+var z: dWord;
+begin
+    result:= iCantStrings.Strings[Random(iCantStrings.Count-1)]
+end;
+
 function cleanHTMLForIRC(buffer: string): string;
 begin
-    result:= trim(resolveXMLents(stripHTML(stripControls(buffer))))
+    result:= trim(resolveXMLents(stripHTML(stripSomeControls(buffer))))
 end;
 
 function mIRCcolor(color: tColor): string;
@@ -124,7 +134,7 @@ begin
         else result.site:= siWhatever
     end
     else if (pos('wikipedia.org', y) > 0) or (pos('wiktionary.org', y) > 0)
-         or (pos('wikia.org', y) > 0)then
+         or (pos('wikia.', y) > 0) or (pos('wiki.', y) > 0) then
         result.site:= siPedia
     else if pos('youtube.com', y) > 0 then
         result.site:= siYouTube
@@ -134,12 +144,14 @@ end;
 function getExcerpt(buffer: string; size: dWord): string;
 { This is for text files or whatever. Might fancy it up later. }
 var z: dWord = 1;
+    l: dWord;
 begin
-    while (byte(buffer[z]) < 33) and (z < length(buffer)) do
+    l:= length(buffer);
+    while (byte(buffer[z]) < 33) and (z < l) do
         inc(z);
-    if (z + size) < length(buffer) then
-        result:= buffer[z..z+size-1]
-    else result:= buffer[z..length(buffer)]
+    if (z + size) < l then
+        result:= buffer[z..z+size]
+    else result:= buffer[z..l]
 end;
 
 { and of course, these should be split into includes; oh well }
@@ -158,10 +170,11 @@ begin
         scanToWord('<div id="journal', buffer, z);
         z:= 1
     end;
+
     scanToWord('<h3', buffer, z);
     findNext('>', buffer, z);
     inc(z);
-    title+= stripControls(resolveXMLents(stripHTML(scanToWord('</h3', buffer, z))));
+    title+= resolveXMLents(stripHTML(scanToWord('</h3', buffer, z)));
 
     y:= z;
     { Comment count }
@@ -174,12 +187,18 @@ begin
     end;
 
     { Summary }
-{    z:= y;
+    z:= y;
     scanToWord('div class="intro"', buffer, z);
     findNext('>', buffer, z);
     inc(z);
     summary:= clipText(cleanHTMLForIRC(scanToWord('</div', buffer, z)), 180);
-}
+
+    if (ciPos('close', title) = 1) or (ciPos('error', title) = 1) or (ciPos('log in', title) = 1) then
+        if ciPos(nothing_error, buffer) > 0 then begin
+            result:= iCant();
+            exit
+        end;
+
     result:= mIRCcolor(clRed) + 'SN ';
     if sfDev in flags then result+= '(dev) ';
     if sfTMBDev in flags then result+= '(TMB dev) ';
@@ -187,7 +206,7 @@ begin
     else result+= 'article ';
 
 
-    result+= reduceWhiteSpace(mIRCcolor(clGreen) + title + mIRCcolor(clNone) + ': ' + summary);
+    result+= reduceWhiteSpace(mIRCcolor(clGreen) + title + mIRCcolor(clNone));// + ': ' + summary);
 end;
 
 function getSoylentSubmission(buffer: string; flags: kSiteFlags): string;
@@ -203,6 +222,7 @@ begin
         scanToWord('<div id="journal', buffer, z);
         z:= 1
     end;
+
     scanToWord('<h3', buffer, z);
     findNext('>', buffer, z);
     inc(z);
@@ -213,17 +233,23 @@ begin
     scanToWord('<b', buffer, z);
     findNext('>', buffer, z);
     inc(z);
-    who:= trim(stripControls(resolveXMLents(stripHTML(scanToWord('</b', buffer, z)))));
+    who:= trim(resolveXMLents(stripHTML(scanToWord('</b', buffer, z))));
 
 
     { Summary }
-{
+
     scanToWord('<p class="byline">', buffer, z);
     scanToWord('writes', buffer, z);
     findNext(':', buffer, z);
     inc(z);
     summary:= clipText(cleanHTMLForIRC(scanToWord('</div', buffer, z)), 180);
-}
+
+    if (ciPos('close', title) = 1) or (ciPos('error', title) = 1) or (ciPos('log in', title) = 1) then
+        if ciPos(nothing_error, buffer) > 0 then begin
+            result:= iCant();
+            exit
+        end;
+
     result:= mIRCcolor(clRed) + 'SN ';
     if sfDev in flags then result+= '(dev) ';
     if sfTMBDev in flags then result+= '(TMB dev) ';
@@ -233,21 +259,37 @@ begin
 end;
 
 
-function getWikiTextia(buffer: string): string;
-var z: dWord = 1;
+function getWikiTextia(buffer: string; anchor: string): string;
+var z      : dWord = 1;
+    title,
+    summary: string;
 begin
     scanToWord('id="firstHeading"', buffer, z);
     if z < 1 then
         scanToWord('id="section_0"', buffer, z);
-    findNext('>', buffer, z);
-    inc(z);
-    result:= mIRCcolor(clRed) + 'Wiki: ' + mIRCcolor(clGreen) + 
-    clipText(cleanHTMLForIRC(scanToWord('</h1', buffer, z)), 69) + ':' + mIRCcolor(clNone);
-//    scanToWord('mw-content-text', buffer, z);
-    scanToWord('<p>', buffer, z);
-    inc(z, 2);
-    result+= ' ' + 
-    clipText(reduceWhiteSpace(cleanHTMLForIRC(scanToWord('</p', buffer, z))), 240)
+    if z > 1 then begin
+        findNext('>', buffer, z);
+        inc(z);
+        title:= clipText(cleanHTMLForIRC(scanToWord('</h1', buffer, z)), 69)
+    end else
+        title:= getXMLtitle(buffer);
+
+    if anchor = '' then begin
+        scanToWord('mw-content-text', buffer, z);
+        findNext('>', buffer, z);
+        inc(z)
+    end else begin
+        z:= ciPos('id="' + anchor, buffer);
+        if z > 0 then begin
+            scanToWord('</span', buffer, z);
+            findNext('>', buffer, z);
+            inc(z)
+        end
+    end;
+//    inc(z);
+    summary:= clipText(reduceWhiteSpace(cleanHTMLForIRC(scanToWord('</p', buffer, z))), 420);
+
+    result := mIRCcolor(clRed) + 'Wiki: ' + mIRCcolor(clGreen) + title {+ ':'} + mIRCcolor(clNone);// + ' ' + summary
 end;
 
 function getYouTubeDiz(buffer: string): string;
@@ -283,7 +325,7 @@ begin
         result:= mIRCcolor(clRed) + 'SN ';
         if sfDev in flags then result+= '(dev) ';
         if sfTMBDev in flags then result+= '(TMB dev) ';
-        result+= 'comment by ' + trim(stripHTML(stripControls(scanToWord('<span', buffer, z))));// + ':' + mIRCcolor(clNone);
+        result+= 'comment by ' + trim(stripHTML(stripSomeControls(scanToWord('<span', buffer, z))));// + ':' + mIRCcolor(clNone);
       { Find the comment }
 {        scanToWord('<div id="comment_', buffer, z);
         findNext  ('>', buffer, z);
@@ -305,7 +347,13 @@ begin
     scanToWord('class="title"',buffer, z);
     findNext('>', buffer, z);
     inc(z);
-    title:= stripHTML(stripControls(scanToWord('</div', buffer, z)));
+    title:= stripHTML(stripSomeControls(scanToWord('</div', buffer, z)));
+
+    if (ciPos('close', title) = 1) or (ciPos('error', title) = 1) or (ciPos('log in', title) = 1) then
+        if ciPos(nothing_error, buffer) > 0 then begin
+            result:= iCant();
+            exit
+        end;
 
   { Find the vote count, even though we're putting it before the horse—I mean title }
     scanToWord('class="totalVotes"', buffer, z);
@@ -336,7 +384,7 @@ begin
     scanToWord('<article class="story', buffer, z);
     findNext('>', buffer, z);
     inc(z);
-    title:= resolveXMLents(stripHTML(stripControls(scanToWord('</h1>', buffer, z))));
+    title:= resolveXMLents(stripHTML(stripSomeControls(scanToWord('</h1>', buffer, z))));
     scanToWord('<div', buffer, z);
     findNext('>', buffer, z);
     inc(z);
@@ -345,7 +393,7 @@ begin
     scanToWord('<footer>', buffer, z);
     scanToWord('<b>', buffer, z);
     inc(z, 2);
-    comments:= stripControls(scanToWord('</b>', buffer, z));
+    comments:= stripSomeControls(scanToWord('</b>', buffer, z));
     result:= reduceWhiteSpace(mIRCcolor(clBlue) + 'Pipedot Article: ' + mIRCcolor(clGreen) + title + mIRCcolor(clBlue) + ' (' + comments + ' comments) ');// + mIRCcolor(clNone) + summary);
 end;
 
@@ -446,6 +494,18 @@ begin
     end;
     result:= buffer
 end;
+
+initialization
+    iCantStrings:= tStringList.create;
+    iCantStrings.Append('I can''t!');
+    iCantStrings.Append('It won''t let me');
+    iCantStrings.Append('It''s no good; I can''t do it!');
+    iCantStrings.Append('');
+    iCantStrings.Append('');
+
+
+finalization
+    iCantStrings.free;
 
 
 

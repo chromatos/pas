@@ -10,10 +10,11 @@ uses
   {$IFDEF UNIX}{$IFDEF UseCThreads}
   cthreads,
   {$ENDIF}{$ENDIF}
-  Classes, SysUtils, process, baseunix, CustApp, tubeyIRC, kUtils, url_title4;
+  Classes, SysUtils, process, baseunix, CustApp, tubeyIRC, kUtils, url_title4;//,
+//  stringListList;
 
 const
-    root       = '/home/b008135/';
+    root       = '/home/toobee/';
     logFile    = root + 'monopo.log';
     sourceLink = 'https://github.com/chromatos/pas/tree/master/2birc';
 
@@ -81,7 +82,7 @@ begin
 
     if  (ciPos('bender', message.user.user) = 0) and (ciPos('sedbot', message.user.user) = 0)
     and (ciPos('exec', message.user.user) = 0) and (ciPos('ciri', message.user.user) = 0)
-    and (ciPos('aqu4', message.user.user) = 0)
+    and (ciPos('aqu4', message.user.user) = 0) and (ciPos('supybot', message.user.user) = 0)
     and not(message.message[1] in ['.','!','$', '~']) then begin
         x:= getTitles(message.message, flags);
         if x.count > 0 then
@@ -136,10 +137,14 @@ begin
                        bot.part(message.channel, 'You told me to')
                    else begin
                        stuff:= scanByDelimiter(' ', pars, z);
-                       if z = length(pars) then
-                           bot.part(stuff, 'Leaving')
-                       else
-                           bot.part(stuff, pars[z..length(pars)]);
+                       if stuff[1] in ['#', '&', '!', '.', '~'] then begin
+                           message.channel:= stuff;
+                           pars:= pars[z..length(pars)];
+
+                           if pars = '' then
+                               pars:= 'Leaving';
+                       end;
+                       bot.part(message.channel, pars);
                    end;
         ':q!'    : if authed then begin
                       if pars = '' then
@@ -155,34 +160,42 @@ begin
                            bot.disconnect(pars);
                        mode:= bmRestarting;
                    end;
-        's',
-        'say'    : begin if (pars[1] in ['.','!','$', '~']) then begin
-                       if not authed then
-                           exit
-                       end;
-                       bot.say(message.channel, pars);
+        'reload' : if authed then begin
+                       bot.say(message.channel, intToStr(loadNaughties) + ' naughty strings loaded');
                    end;
-        'd',
-        'do'     : bot.sayAction(message.channel, pars);
+        'kick'   : if authed and (pars <> '') then begin
+                       stuff:= scanByDelimiter(' ', pars, z);
+                       bot.kick(stuff, pars[z..Length(pars)]);
+                   end;
+        's',
+        'say'    : begin if pars <> '' then
+                       if (pars[1] in ['.','!','$', '~']) then begin
+                           if not authed then
+                               exit
+                           end;
+                           bot.say(message.channel, pars);
+                       end;
+        'do',
+        'me'     : if pars <> '' then bot.sayAction(message.channel, pars);
         'invite' : bot.invite(scanByDelimiter(' ', pars, z), pars[z..length(pars)]);
-        'r'      : bot.say(message.channel, reverse(pars));
-        'rdo'    : bot.sayAction(message.channel, reverse(pars));
-        'sayto'  : if authed then begin
+        'r'      : if pars <> '' then bot.say(message.channel, reverse(pars));
+        'rdo'    : if pars <> '' then bot.sayAction(message.channel, reverse(pars));
+        'sayto'  : if authed and (pars <> '') then begin
                        stuff:= scanByDelimiter(' ', pars, z);
                        bot.say(stuff, pars[z..length(pars)])
                    end;
-        'doto'   : if authed then begin
+        'doto'   : if authed and (pars <> '') then begin
                        stuff:= scanByDelimiter(' ', pars, z);
                        bot.sayAction(stuff, pars[z..length(pars)])
                    end;
-        'topic'  : if authed then
+        'topic'  : if authed and (pars <> '') then
                        bot.setTopic(message.channel, pars);
         'o'      : if authed then
                        if pars = '' then
                            bot.setMode(message.channel, '+o', message.user.nick)
                        else
                            bot.setMode(message.channel, '+o', pars);
-        '-o'      : if authed then
+        '-o'      : if authed and (pars <> '') then
                        if pars = '' then
                            bot.setMode(message.channel, '-o', message.user.nick)
                        else
@@ -197,11 +210,12 @@ begin
                            bot.setMode(message.channel, '-v', message.user.nick)
                        else
                            bot.setMode(message.channel, '-v', pars);
-        'source' : bot.say(message.channel, 'Source: ' + sourceLink);
+        'source' : //bot.say(message.channel, 'Source: ' + sourceLink);
+                   bot.sayAction(message.channel, 'is ashamed of the source');
 
-        'nick'   : if authed then bot.nick(pars);
+        'nick'   : if authed and (pars <> '') then bot.nick(pars);
         'help'   : if pars = '' then
-                       bot.say(message.channel, '[join; part; invite] [s,say; d,do; r; rdo] and if you''re special, then [sayto; doto] [(-)o; (-)v] [topic] [nick] [restart; :q!]');
+                       bot.say(message.channel, '[join; part; invite] [s,say; me,do; r; rdo] and if you''re special, then [sayto; doto] [(-)o; (-)v] [topic] [nick] [reload; restart; :q!]');
     end;
 end;
 
@@ -212,6 +226,13 @@ begin
 
     if (message.message[1] = '/') and (length(message.message) > 1) then
         doCommand(message)
+    else
+    if (message.user.nick = 'exec') and (message.message = 'exec_test_sn_site_down') then begin
+        if not pageIsUp('http://soylentnews.org/') then
+            bot.sayAction('#Soylent', 'confirms "SoylentNews.org has been abducted by aliens!"')
+        else
+            bot.say('exec', 'nuh uh!')
+    end
     else
         if length(message.message) > 5 then showTitles(message);
     if (ciPos('bacon--', message.message) = 1) and (message.channel = '##') then
@@ -256,15 +277,16 @@ writeln('Checking options');
     end;
 writeln('Instantiating');
     bot                := kIRCclient.create;
-    bot.me.user        := 'chromas';
-    bot.me.nick        := 'monopoly';
-    bot.me.realName    := 'A Pascal robot';
+    bot.me.user        := 'confirms';
+    bot.me.nick        := 'NetCraft';
+    bot.me.realName    := 'monopoly 2';
     if FileExists(logFile + '.channels') then begin
         bot.channels.LoadFromFile(logFile + '.channels');
         DeleteFile(logFile + '.channels')
     end
-    else
-        bot.channels.Add ('#shell32.dll');
+    else begin
+        bot.channels.Add('#');
+    end;
 
     bot.OnKick         := @handleKick;
     bot.onConnect      := @handleConnect;
