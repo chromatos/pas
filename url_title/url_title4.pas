@@ -1,3 +1,7 @@
+{ Page title-grabbing script with much hackishness.
+  License: WTFPL (see /copying)
+}
+
 unit url_title4;
 {$mode objfpc}{$H+}
 
@@ -7,35 +11,56 @@ uses
 
 type kSomeFlags = set of (gtHttp, gtHttps, gtFtp, gtGopher);
 
+     k_title_cache_item = record
+         url,
+         title  : string;
+         expires,
+         seen   : tDateTime; // For people like EF who paste a link several times
+     end;
+
+     kTitleCache = class(tFpList);
+
 function getTitles(buffer: string; someFlags: kSomeFlags): tStringList;
+function pageIsUp (uri: string): boolean;
+function loadNaughties: dWord;
 
-
+var naughtyList: tStringList;
 
 implementation
 
+function loadNaughties: dWord;
+begin
+    if FileExists('/usr/local/etc/titlebot.ignores') then begin
+        naughtyList.LoadFromFile('/usr/local/etc/titlebot.ignores');
+        result:= naughtyList.Count;
+        writeLn(#9'Ignore list: loaded ', naughtyList.Count, ' strings')
+    end
+end;
 
 function isSafe(buffer: string): boolean;
 begin
     buffer:= lowerCase(buffer);
-    result:= false;
-    if Pos('//localhost', buffer) > 0 then exit else
+//    result:= false;
+    result:= not containsWords(naughtyList, buffer, true) //then exit else
+{    if Pos('//localhost', buffer) > 0 then exit else
     if Pos('//127.', buffer) > 0 then exit else
     if Pos('//192.168', buffer) > 0 then exit else
     if Pos('//10.', buffer) > 0 then exit else
     if Pos('//0.', buffer) > 0 then exit else
     if Pos('//255.', buffer) > 0 then exit else
-    if Pos('kidd', buffer) > 0 then exit else
-    result:= true
+    if Pos('example.com', buffer) > 0 then exit else
+    if Pos('kidd', buffer) > 0 then exit else // Anything else? Don't need to be party v& again}
+//    result:= true
 end;
 
-function doRequest(var uri: string; baseName: string; out props: kFileProperties; out buffer: string): kRequestResult;
+function doRequest(var uri: string; baseName: string; out props: kFileProperties; out buffer: string; out contentType: string; out redirects: byte): kRequestResult;
 const
-    uaString = 'monopoly/2 (Mozilla Gecko Netscape lynx links2 Firefox IE safari konqueror opera chrome googlebot bingbot)';
-var aFile : tStringList;
-    z     : dWord;
-    redirs: byte = 0;
-    urls  : tStringList;
-    final : boolean = false;
+    uaString = 'Mozilla/5.0 (monopoly 2; X11; Linux x86_64; rv:24.7) Gecko/20140911 Firefox/24.7';
+var aFile   : tStringList;
+    z       : dWord;
+    redirs  : byte = 0;
+    urls    : tStringList;
+    final   : boolean = false;
 begin
     urls  := tStringList.Create;
     aFile := tStringList.Create;
@@ -48,7 +73,7 @@ begin
             result:= isNothing;
             exit
         end;
-        fpSystem('curl -A "' + uaString + '" -k -s -D ' + baseName + '.head "' + uri + '" > ' + baseName + '.body');
+        fpSystem('curl -m 8 -x "http://10.10.9.254:3128" -A "' + uaString + '" -k -s -D ' + baseName + '.head "' + uri + '" > ' + baseName + '.body');
         if not (FileExists(baseName + '.head') and FileExists(baseName + '.body')) then begin
             result:= isNotFound;
             break
@@ -70,8 +95,9 @@ begin
             if ciPos('location', aFile.Strings[z]) > 0 then
                 uri:= aFile.Strings[z][Pos(':', aFile.Strings[z])+2..length(aFile.Strings[z])];
             if ciPos('content-type', aFile.Strings[z]) > 0 then begin
-                if ciPos('text', aFile.Strings[z]) > 0 then props+= [isText];
-                if (ciPos('xml', aFile.Strings[z]) > 0) or (ciPos('html', aFile.Strings[z]) > 0) then props+= [isXMLish];
+                contentType:= aFile.Strings[z];
+                if ciPos('text', contentType) > 0 then props+= [isText];
+                if (ciPos('xml', contentType) > 0) or (ciPos('html', contentType) > 0) then props+= [isXMLish];
             end;
             inc(z)
         end
@@ -85,18 +111,35 @@ begin
     urls.free;
     aFile.free;
     if not final then
-        result:= isTooRedirectish
+        result:= isTooRedirectish;
+    redirects:= redirs; // maybe just need one variable. Oh well.
 
 end;
+
+function pageIsUp(uri: string): boolean;
+var baseName : string = '/tmp/.sitecheck.ask';
+    props    : kFileProperties;
+    buffer   : string;
+    cType    : string;
+    redirects: byte = 0;
+    theResult: kRequestResult;
+begin
+    theResult:= doRequest(uri, baseName, props, buffer, cType, redirects);
+    result:= pos('GMT by cella (squid/', buffer) < 2
+end;
+
 
 function getTitles(buffer: string; someFlags: kSomeFlags): tStringList;
 const
     a = '/tmp/titlebot.';
 var z            : dWord;
+    y            : dWord;
     oldUri       : string          = '';
     title        : string          = '';
     content      : string          = '';
     aFile        : string          = '';
+    contentType  : string          = '';
+    redirects    : byte;
 //    user,
 //    channel,
     message      : string;
@@ -105,6 +148,7 @@ var z            : dWord;
     fileProps    : kFileProperties;
     requestResult: kRequestResult;
     DoABarrelRoll: boolean = true;
+    hasTheTitle  : boolean;
 begin
   { A little hackishness. This was the only way loading files would work before
     I figured out files don't work well in global space. I'm not going to change
@@ -112,26 +156,20 @@ begin
 
   { Oh yeah, the real hack is curl --> files --> here instead of using pipes or
     learning SSL. }
-    lines:= TStringList.Create;
+    lines := TStringList.Create;
 
-//    readLn(buffer);
-//    z:= pos(#9, buffer);
-//    if z = 0 then exit
-//    else z:= 1;
-
-//    user   := scanByDelimiter(#9, buffer, z);
-//    channel:= scanByDelimiter(#9, buffer, z);
-//    message:= scanByDelimiter(#9, buffer, z);
-    aFile:= a + '.' + intToStr(random(65535));
+    aFile := a + '.' + intToStr(random(65535));
     lines.clear;
-    lines:= extractURLs(buffer[z+1..length(buffer)]);
+    lines := extractURLs(buffer[z+1..length(buffer)]);
     result:= tStringList.Create;
     if lines.count > 0 then
         for z:= 0 to lines.count-1 do begin
             buffer := lines.Strings[z];
+            title  := '';
             if ((gtHttp in someFlags) and (ciPos('http:/', buffer) > 0)) or ((gtHttps in someFlags) and (ciPos('https:/', buffer) > 0)) then begin
+                writeln(#9'url: ', buffer);
                 oldUri := buffer;
-                requestResult:= doRequest(buffer, aFile, fileProps, content);
+                requestResult:= doRequest(buffer, aFile, fileProps, content, contentType, redirects);
                 if FileExists(aFile + '.head') then DeleteFile(aFile + '.head');
                 if FileExists(aFile + '.body') then DeleteFile(aFile + '.body');
                 theSite:= detectSite(buffer);
@@ -154,43 +192,38 @@ begin
                             siPipeArticle: title:= getPipedotArticle(content, theSite.flags);
                             siPipeComment: title:= getPipedotComment(content, theSite.flags);
 
-                            siPedia      : title:= getWikiTextia(content); // Broken for mobile pages
+                            siPedia      : begin
+                                               y:= pos('#', buffer);
+                                               if y = 0 then
+                                                   title:= getWikiTextia(content, '')
+                                               else
+                                                   title:= getWikiTextia(content, buffer[y+1..length(buffer)]); // Broken for mobile pages
+                                           end;
 
 //                            siYouTube    : title:= getYouTubeDiz(content); // Broken; the XML one is good enough
+                            end;
 
                         end;
                     end else if isText in fileProps then begin
-                        title:= getExcerpt(content, 32);
+                        title:= contentType;
                     end else
                         ; // do stuff
-    {                if urlHasTitle(oldUri, title) then
-                        title:= '';} // Broken because urlHasTitle() always returns false
 
-                    if buffer <> oldUri then title+= ' ( '+stripControls(buffer)+' )';
+                    hasTheTitle:= (theSite.site = siWhatever) and urlHasTitle(oldUri, title);
+
+                    if buffer <> oldUri then title+= ' ( '+stripSomeControls(buffer)+' )';
                 end;
-            end;
-            { ':'#9 allows the IRC bot to skip error messages, even though they should be
-              going to stdErr, anyway. Apparently I'm doin' it wrong in KVIrc. }
-            if title <> '' then
-                result.Append(title)
-        end
-end;
-{
-var
-    buffer: string = '';
-begin
-    Randomize;
-{ Have to put everything into a function otherwise all kinds of errors pop up,
-  especially around files. I assume it's due to the way globals are stored
-  but I'm not going to check. }
+                { ':'#9 allows the IRC bot to skip error messages, even though they should be
+                  going to stdErr, anyway. Apparently I was doin' it wrong in KVIrc. }
+                if ((not hasTheTitle) or (redirects > 0)) and (title <> '') then
+                    result.Append(stripSomeControls(title))
+            end
+        end;
 
-{ The reason for using a file is so I don't have to escape the strings
-  (and I don't recall) if thee's a way in KVIrc to pipe stuff into stdIn on processes. }
+initialization
 
-  while buffer <> 'QUIT' do begin
-      readLn(buffer);
-      doThings(buffer);
-  end;
-}
-end.
+naughtyList:= TStringList.create;
+loadNaughties
+
+;end. // the compiler suddenly needs a semicolon here
 
