@@ -428,15 +428,15 @@ begin
 end;
 
 function split_by_sequence(sequence, buffer: string): tStringList;
-var z: dWord = 1;
-    y: dWord = 0;
+var z: integer = 1;
+    y: integer = 0;
     l: dWord;
 begin
     split_by_sequence:= tStringList.create;
 
     l:= length(sequence);
     for y:= 1 to l do
-        split_by_sequence.Append(get_to_next_char(sequence[y], buffer, z));
+        split_by_sequence.Append(ExtractSubstr(buffer, z, [sequence[y]]));
 
     split_by_sequence.Append(buffer[z..length(buffer)])
 end;
