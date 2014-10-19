@@ -15,45 +15,115 @@ type
     kStrings = array of string;
     kCharSet = set of char;
 
-function  splitByType      (yourString: string; skipWhiteSpace: boolean = true;
-                            alphaNum: boolean = true): tStringList;
+function  splitByType         (yourString: string; skipWhiteSpace: boolean = true;
+                               alphaNum: boolean = true): tStringList;
 
-function  split            (delimiter: char; yourString: string): tStringList; // These are unnecessary because
-function  join             (delimiter: char; stringList: tStringList): string; // we're using tStringList now.
-function  split            (delimiter: char; yourString: string): kStrings;
+function  split               (delimiter: char; yourString: string): tStringList; // These are unnecessary because
+function  join_stringList     (delimiter: char; stringList: tStringList): string; // we're using tStringList now.
+function  split               (delimiter: char; yourString: string): kStrings;
 
-function  splitBySequence  (sequence, buffer: string): tStringList;
+function  split_by_sequence   (sequence, buffer: string): tStringList;
+{
+procedure find_next_char      (delimiter: char; buffer: string; var position: dWord; overstep: boolean = false);
+function  get_to_next_char    (delimiter: char; buffer: string; var position: dWord; overstep: boolean = false): string;
+function  find_next_set       (delimiter: kCharSet; buffer: string; var position: dWord): string;
+function  find_next_string    (aWord: string; buffer: string; var position: dWord; ignoreCase: boolean = true): string;
+}
 
-function  scanByDelimiter  (delimiter: char; buffer: string; var position: dWord): string;
-function  scanByDelimiters (delimiter: kCharSet; buffer: string; var position: dWord): string;
-function  scanToWord       (aWord: string; buffer: string; var position: dWord; ignoreCase: boolean = true): string;
-procedure findNext         (delimiter: char; buffer: string; var position: dWord);
+function  extract_subStr      (buffer: string; var position: integer; subString: string): string;
+function  word_is_present     (yourWord, buffer: string; caseSensitive: boolean = false): boolean;
+function  find_word           (yourWord, buffer: string; caseSensitive: boolean = false): dWord;
+function  word_is_present     (yourWord: string; strings: tStringList; caseSensitive: boolean = false): boolean; overload;
+function  find_word           (yourWord: string; strings: tStringList; caseSensitive: boolean = false): dWord; overload;
 
-function  wordPresent      (yourWord, buffer: string; caseSensitive: boolean = false): boolean;
-function  findWord         (yourWord, buffer: string; caseSensitive: boolean = false): dWord;
-function  wordPresent      (yourWord: string; strings: tStringList; caseSensitive: boolean = false): boolean; overload;
-function  findWord         (yourWord: string; strings: tStringList; caseSensitive: boolean = false): dWord; overload;
+function  contains_any_strings(subStrings: tStringList; buffer: string; caseSensitive: boolean = false): boolean;
+function  count_words         (subStrings: tStringList; buffer: string; caseSensitive: boolean = false): dWord;
 
-function  containsWords    (subStrings: tStringList; buffer: string; caseSensitive: boolean = false): boolean;
+function  count_delimiters    (delimiter: char; yourString: string): dWord;
+function  TextPos             (subString, buffer: string): dWord; // case-insensitive Pos()
 
-function  countDelimiters  (delimiter: char; yourString: string): dWord;
-function  ciPos            (subString, buffer: string): dWord; // case-insensitive Pos()
+function  string_is_numeric   (buffer: string): boolean;
 
-function  isNumeric        (buffer: string): boolean;
+function  stripSomeControls   (buffer: string): string;
+function  strip_set           (theSet: kCharSet; buffer: string): string;
 
-{function  stripControls    (buffer: string): string;}
-function  stripSomeControls(buffer: string): string;
-function  stripSet         (theSet: kCharSet; buffer: string): string;
-function  reduceWhiteSpace (buffer: string): string;
-function  clipText         (buffer: string; newLength: word): string;
+function  reduce_white_space  (buffer: string): string;
 
-function  reverse          (buffer: string): string;
+function  clip_text           (buffer: string; newLength: dWord): string;
 
-function  readFile         (fileName: string): string;
+function  reverse             (buffer: string): string;
+
+function  file2string         (fileName: string): string;
+procedure string2File         (filename, buffer: string; append: boolean = false);
 
 implementation
+uses strutils;
 
-function stripSet(theSet: kCharSet; buffer: string): string;
+{ Disk i/o }
+
+function file2string(fileName: string): string;
+var x: tFileStream;
+begin
+    if FileExists(fileName) then begin
+        x:= TFileStream.create(fileName, fmOpenRead);
+        setLength(result, x.Size);
+        x.Read(result[1], x.Size);
+        x.Free
+    end else
+        result:= ''
+end;
+
+procedure string2File(filename, buffer: string; append: boolean = false);
+var x: tFileStream;
+begin
+    if append and FileExists(filename) then
+        x:= TFileStream.create(fileName, fmAppend)
+    else
+        x:= TFileStream.create(fileName, fmOpenWrite);
+    x.WriteBuffer(buffer[1], length(buffer));
+    x.Free
+end;
+
+function count_delimiters(delimiter: char; yourString: string): dWord;
+var z: dWord = 0;
+begin
+    result:= 0;
+    while z < length(yourString) do begin
+        inc(z);
+        if yourString[z] = delimiter then
+            inc(result)
+    end
+end;
+
+function TextPos(subString, buffer: string): dWord;
+var a,
+    b: string;
+begin
+    a:= lowercase(subString);
+    b:= lowercase(buffer);
+    result:= pos(a, b)
+end;
+
+
+{ Stripping }
+
+function stripSomeControls(buffer: string): string;
+var z: dWord = 1;
+    y: dWord = 1;
+begin
+    if buffer <> '' then begin
+        setLength(result, length(buffer));
+        for z:= 1 to length(buffer) do
+            if not(buffer[z] in [#9..#13]) then
+            begin
+                result[y]:= buffer[z];
+                inc(y)
+            end;
+        setLength(result, y-1)
+    end
+end;
+
+function strip_set(theSet: kCharSet; buffer: string): string;
 var z: dWord = 1;
     y: dWord;
 begin
@@ -71,75 +141,300 @@ begin
     end
 end;
 
-function readFile(fileName: string): string;
-var x: tFileStream;
+
+{ Searching }
+
+function extract_subStr(buffer: string; var position: integer; subString: string): string;
+var z: integer;
 begin
-    if FileExists(fileName) then begin
-        x:= TFileStream.create(fileName, fmOpenRead);
-        setLength(result, x.Size);
-        x.Read(result[1], x.Size);
-        x.Free
+    z:= PosEx(subString, buffer, position);
+    if z > 0 then begin
+        result  := buffer[position..z-1];
+        position:= z + length(subString)
+    end else begin
+        result  := buffer[position..length(buffer)];
+        position:= length(buffer)
+    end
+end;
+
+procedure find_next_char(delimiter: char; buffer: string; var position: dWord; overstep: boolean = false);
+{ Look for the next delimiter, with an offset }
+var z: dWord;
+begin
+{    z:= position;
+
+{    while (buffer[position] <> delimiter) and (position < length(buffer)) do
+        inc(position);
+
+    if (position = length(buffer)) and (buffer[position] <> delimiter) then
+        position:= z // If we don't find what we're looking for then just put
+                      // it back and walk away, whistling nonchalantly.
+    else }
+    z:= pos(delimiter, buffer[position..length(buffer)]);
+    if z > 0 then begin
+        if overstep and (z < length(buffer)) then
+            inc(z, position)
+        else
+            inc(z, position-1)
+    end;}
+    position:= PosEx(delimiter, buffer, position);
+    if overstep and (position > 0) then
+        inc(position)
+end;
+
+function get_to_next_char(delimiter: char; buffer: string; var position: dWord; overstep: boolean = false): string;
+{ Returns the portion of a string from Position to the next delimiter.
+  The position of the character following the delimiter is returned in Position
+  for Looping. }
+var z: dWord;
+begin
+{    if position < length(buffer) then begin
+        z:= position;
+        while (z < length(buffer)) and (buffer[z] <> delimiter) do
+            inc(z);
+//            get_to_next_char(delimiter, buffer, z);
+
+        if (z > position) then
+        begin
+            if z = length(buffer) then
+                inc(z);
+            get_to_next_char:= buffer[position..z-1]
+        end
+
+        else if (z = position) then // I suppose I could take out this check, assuming
+            get_to_next_char:= buffer[position..z]; // the difference won't become negative
+        position:= z + 1
+    end}
+    get_to_next_char(delimiter, buffer, z, overstep);
+    if z > 0 then
+        result:= buffer[position..z-1]
+    else
+        result:= '';
+    position:= z
+end;
+
+function find_next_set(delimiter: kCharSet; buffer: string; var position: dWord): string;
+{ Returns the portion of a string from Position to the next delimiter.
+  The position of the character following the space is returned in Position
+  for Looping. }
+var z: dWord;
+begin
+{    if position < length(buffer) then begin
+        endPos:= position;
+        while (endPos < length(buffer)) and (not(buffer[endPos] in delimiter)) do
+            inc(endPos);
+//            find_next(delimiter, buffer, endPos);
+
+        if (endPos > position) then
+        begin
+            if endPos = length(buffer) then
+                inc(endPos);
+            find_next:= buffer[position..endPos-1]
+        end
+
+        else if (endPos = position) then // I suppose I could take out this check, assuming
+            find_next:= buffer[position..endPos]; // the difference won't become negative
+        position:= endPos + 1
+    end
+}
+    z:= PosSetEx(delimiter, buffer, position);
+    if z > 0 then begin
+        result:= buffer[position..z-1];
+        inc(z)
+    end else
+        result:= '';
+    position:= z
+end;
+
+
+function find_next_string(aWord: string; buffer: string; var position: dWord; ignoreCase: boolean = true): string;
+{ An optionally case-insensitive Pos() with offset }
+var z: dWord;
+    a,
+    b: string;
+begin
+    if position < length(buffer) then begin
+        z:= position;
+        if ignoreCase then
+            z:= PosEx(lowercase(aWord), lowercase(buffer), position)
+        else
+            z:= PosEx(aWord, buffer, position);
+
+        if z > 0 then
+            result:= buffer[position..z-1]
+        else
+            result:= buffer[position..length(buffer)];
+        position:= z
     end else
         result:= ''
 end;
 
-function countDelimiters(delimiter: char; yourString: string): dWord;
+
+function find_word(yourWord, buffer: string; caseSensitive: boolean = false): dWord;
+{ Checks for the presence of a whole word and returns its position
+  or 0 if not found. Strings are 1-indexed so we don't need to waste half
+  the range by using a signed int plus that's how Pos() works. }
+var a, b: string;
+    z   : dWord;
+begin
+    find_word:= 0;
+
+    if caseSensitive then begin
+        a:= yourWord;
+        b:= buffer
+    end else
+    begin
+        a:= lowerCase(yourWord);
+        b:= lowerCase(buffer)
+    end;
+
+    z:= 1;
+    while z < length(b) do begin
+        while (b[z] <> a[1]) and (z < length(b)) do
+            inc(z);
+{       Nested IFs may be more optimal; the Interwebz says this could be
+        bad for branch prediction. But it looks so obtuse and coooool! }
+        if ((b[z] = a[1]) and (z < length(b)) and (b[z+1] = a[2]))
+            and(b[z..z+length(a)-1] = a)
+            and(((z = 1) or (not(b[z-1] in ['0'..'9','A'..'Z','a'..'z'])))
+                 and((z+length(a) = length(b)+1)
+                    or(not(b[z+length(a)] in ['0'..'9','A'..'Z','a'..'z']))
+                 ))
+            then begin
+                find_word:= z;
+                exit
+            end;
+        inc(z)
+    end;
+end;
+
+function find_word(yourWord: string; strings: tStringList; caseSensitive: boolean = false): dWord;
+{ Similar to above but returns an index in a stringlist }
+var
+    z: dWord = 0;
+begin
+    while (z < strings.Count) and (not(word_is_present(yourWord, strings.Strings[z], caseSensitive))) do
+        inc(z);
+    if z < strings.count then
+        find_word:= z
+    else
+        find_word:= high(dWord)
+end;
+
+function word_is_present(yourWord, buffer: string; caseSensitive: boolean = false): boolean;
+{ Checks for the presence of a whole word within a string.
+  It's find_word: boolean edition }
+begin
+    if find_word(yourWord, buffer, caseSensitive) > 0 then
+        word_is_present:= true
+    else
+      word_is_present:= false
+end;
+
+function word_is_present(yourWord: string; strings: tStringList; caseSensitive: boolean = false): boolean;
+{ Checks for the presence of a whole word within a stringlist }
+begin
+    if find_word(yourWord, strings, caseSensitive) < high(dWord) then
+        word_is_present:= true
+    else
+        word_is_present:= false
+end;
+
+function contains_any_strings(subStrings: tStringList; buffer: string; caseSensitive: boolean = false): boolean;
+{ Checks for at least one word in the buffer }
 var z: dWord = 0;
+    y: boolean = false;
+    x: string;
+begin
+    if caseSensitive then
+        x:= buffer
+    else
+        x:= LowerCase(buffer);
+
+    while (z < subStrings.Count) and (not y) do
+    begin
+        y:= pos(subStrings.Strings[z], buffer) > 0;
+//??        if y then writeln(#9'ignored string: ', subStrings.Strings[z]);
+        inc(z)
+    end;
+    result:= y
+end;
+
+function count_words(subStrings: tStringList; buffer: string; caseSensitive: boolean = false): dWord;
+{ Counts substrings in the buffer }
+var z: dWord = 0;
+    y: string;
 begin
     result:= 0;
-    while z < length(yourString) do begin
+
+    if caseSensitive then begin
+        while z < subStrings.Count do
+        begin
+            if pos(subStrings.Strings[z], buffer) > 0 then
+                inc(result);
+            inc(z)
+        end
+    end
+    else begin
+        y:= LowerCase(buffer);
+        while z < subStrings.Count do
+        begin
+            if pos(LowerCase(subStrings.Strings[z]), y) > 0 then
+                inc(result);
+            inc(z)
+        end
+    end
+end;
+
+
+{ String typechecking }
+
+function string_is_numeric(buffer: string): boolean;
+{ I thought this existed in the RTL but I can't find it. This is only smart
+  enough to handle unsigned ints because that's all we need at the moment. }
+var z: dWord = 1;
+begin
+    while (z < length(buffer)) and (buffer[z] in [' ', '0'..'9']) do
         inc(z);
-        if yourString[z] = delimiter then
-            inc(result)
-    end
-end;
 
-function  ciPos(subString, buffer: string): dWord;
-var a,
-    b: string;
-begin
-    a:= lowercase(subString);
-    b:= lowercase(buffer);
-    result:= pos(a, b)
+    if buffer[z] in [' ', '0'..'9'] then
+        string_is_numeric:= true
+    else
+        string_is_numeric:= false
 end;
 
 
-{function stripControls(buffer: string): string;
+{ String cleanup and prettifying }
+
+function reduce_white_space(buffer: string): string;
 var z: dWord = 1;
-    y: dWord = 1;
+    y: dWord;
 begin
-    if buffer <> '' then begin
-        setLength(result, length(buffer));
-        for z:= 1 to length(buffer) do
-            if byte(buffer[z]) > 31 then
-            begin
-                result[y]:= buffer[z];
-                inc(y)
-            end else
-            if buffer[z] in [#9,#10,#13] then
-            begin
-                result[y]:= ' ';
-                inc(y)
-            end;
-        setLength(result, y-1)
-    end
-end;}
-
-function stripSomeControls(buffer: string): string;
-var z: dWord = 1;
-    y: dWord = 1;
-begin
-    if buffer <> '' then begin
-        setLength(result, length(buffer));
-        for z:= 1 to length(buffer) do
-            if not(buffer[z] in [#9..#13]) then
-            begin
-                result[y]:= buffer[z];
-                inc(y)
-            end;
-        setLength(result, y-1)
-    end
+    result:= '';
+    while z < length(buffer) do begin
+        y:= z;
+        while (not(buffer[z] in [#9, #10, #13, ' '])) and (z < length(buffer)) do
+            inc(z);
+        if (buffer[z] in [#9, #10, #13, ' ']) then begin
+            result+= buffer[y..z-1] + ' ';
+            while (buffer[z] in [#9, #10, #13, ' ']) and (z < length(buffer)) do
+                inc(z)
+        end
+        else if z = length(buffer) then
+            result+= buffer[y..z]
+    end;
 end;
+
+function clip_text(buffer: string; newLength: dWord): string;
+begin
+    if length(buffer) > newLength then
+        result:= buffer[1..newLength-3] + '...'
+    else
+        result:= buffer
+end;
+
+
+{ String splitting }
 
 function split(delimiter: char; yourString: string): kStrings;
 var z,
@@ -254,6 +549,36 @@ begin
     end
 end;
 
+function split_by_sequence(sequence, buffer: string): tStringList;
+var z: dWord = 1;
+    y: dWord = 0;
+    l: dWord;
+begin
+    split_by_sequence:= tStringList.create;
+
+    l:= length(sequence);
+    for y:= 1 to l do
+        split_by_sequence.Append(get_to_next_char(sequence[y], buffer, z));
+
+    split_by_sequence.Append(buffer[z..length(buffer)])
+end;
+
+
+{ String joining }
+
+function join_stringList(delimiter: char; stringList: tStringList): string;
+{ This is similar to using stringList.DelimitedText but we append, otherwise we
+  should probably just call delimitedText or just use it instead. Whatever. }
+var z: dWord;
+begin
+    join_stringList:= stringList.Strings[0];
+    if stringList.Count > 1 then
+        for z:= 1 to stringList.Count-1 do
+            join_stringList:= join_stringList + delimiter + stringList.Strings[z]
+end;
+
+
+{ Steal underpants; ?; Profit! }
 
 function wordsList(yourString: string): tStringList;
 { I don't recall the utility of this function. May throw it out. }
@@ -283,232 +608,8 @@ begin
     end
 end;
 
-procedure findNext(delimiter: char; buffer: string; var position: dWord);
-var z: dWord;
-begin
-    z:= position;
-    while (buffer[position] <> delimiter) and (position < length(buffer)) do
-        inc(position);
-    if (position = length(buffer)) and (buffer[position] <> delimiter) then
-        position:= z // If we don't find what we're looking for then just put
-                     // it back and walk away, whistling nonchalantly.
-end;
 
-function scanByDelimiter(delimiter: char; buffer: string; var position: dWord): string;
-{ Returns the portion of a string from Position to the next delimiter.
-  The position of the character following the space is returned in Position
-  for Looping. }
-var endPos: dWord;
-begin
-    if position < length(buffer) then begin
-        endPos:= position;
-        while (endPos < length(buffer)) and (buffer[endPos] <> delimiter) do
-            inc(endPos);
-//            findNext(delimiter, buffer, endPos);
-
-        if (endPos > position) then
-        begin
-            if endPos = length(buffer) then
-                inc(endPos);
-            scanByDelimiter:= buffer[position..endPos-1]
-        end
-
-        else if (endPos = position) then // I suppose I could take out this check, assuming
-            scanByDelimiter:= buffer[position..endPos]; // the difference won't become negative
-        position:= endPos + 1
-    end
-end;
-
-function scanByDelimiters(delimiter: kCharSet; buffer: string; var position: dWord): string;
-{ Returns the portion of a string from Position to the next delimiter.
-  The position of the character following the space is returned in Position
-  for Looping. }
-var endPos: dWord;
-begin
-    if position < length(buffer) then begin
-        endPos:= position;
-        while (endPos < length(buffer)) and (not(buffer[endPos] in delimiter)) do
-            inc(endPos);
-//            findNext(delimiter, buffer, endPos);
-
-        if (endPos > position) then
-        begin
-            if endPos = length(buffer) then
-                inc(endPos);
-            scanByDelimiters:= buffer[position..endPos-1]
-        end
-
-        else if (endPos = position) then // I suppose I could take out this check, assuming
-            scanByDelimiters:= buffer[position..endPos]; // the difference won't become negative
-        position:= endPos + 1
-    end
-end;
-
-
-function scanToWord(aWord: string; buffer: string; var position: dWord; ignoreCase: boolean = true): string;
-var z: dWord;
-    a,
-    b: string;
-begin
-    z:= position;
-    if ignoreCase then begin
-        a:= lowercase(aWord);
-        b:= lowercase(buffer[z..length(buffer)]);
-    end else begin
-        a:= aWord;
-        b:= buffer[z..length(buffer)]
-    end;
-    inc(z, pos(a, b));
-
-    result  := buffer[position..z-2];
-    position:= z;
-end;
-
-function splitBySequence(sequence, buffer: string): tStringList;
-var z: dWord = 1;
-    y: dWord = 0;
-begin
-    if splitBySequence = nil then splitBySequence:= tStringList.create;
-
-    while y < length(sequence) do begin
-        splitBySequence.Append(scanByDelimiter(sequence[y+1], buffer, z));
-        inc(y)
-    end;
-    splitBySequence.Append(buffer[z..length(buffer)])
-end;
-
-function findWord(yourWord, buffer: string; caseSensitive: boolean = false): dWord;
-{ Checks for the presence of a whole word and returns its position
-  or 0 if not found. Strings are 1-indexed so we don't need to waste half
-  the range by using a signed int. }
-var a, b: string;
-    z   : dWord;
-begin
-    findWord:= 0;
-
-    if caseSensitive then begin
-        a:= yourWord;
-        b:= buffer
-    end else
-    begin
-        a:= lowerCase(yourWord);
-        b:= lowerCase(buffer)
-    end;
-
-    z:= 1;
-    while z < length(b) do begin
-        while (b[z] <> a[1]) and (z < length(b)) do
-            inc(z);
-{       Nested IFs may be more optimal. The Interwebz says this could be
-        bad for branch prediction. }
-        if ((b[z] = a[1]) and (z < length(b)) and (b[z+1] = a[2]))
-            and(b[z..z+length(a)-1] = a)
-            and(((z = 1) or (not(b[z-1] in ['0'..'9','A'..'Z','a'..'z'])))
-                 and((z+length(a) = length(b)+1)
-                    or(not(b[z+length(a)] in ['0'..'9','A'..'Z','a'..'z']))
-                 ))
-            then begin
-                findWord:= z;
-                exit
-            end;
-        inc(z)
-    end;
-end;
-
-function wordPresent(yourWord, buffer: string; caseSensitive: boolean = false): boolean;
-{ Checks for the presence of a whole word }
-begin
-    if findWord(yourWord, buffer, caseSensitive) > 0 then
-        wordPresent:= true
-    else
-      wordPresent:= false
-end;
-
-function findWord(yourWord: string; strings: tStringList; caseSensitive: boolean = false): dWord;
-var
-    z: dWord = 0;
-begin
-    while (z < strings.Count) and (not(wordPresent(yourWord, strings.Strings[z], caseSensitive))) do
-        inc(z);
-    if z < strings.count then
-        findWord:= z
-    else
-        findWord:= high(dWord)
-end;
-
-function wordPresent(yourWord: string; strings: tStringList; caseSensitive: boolean = false): boolean;
-begin
-    if findWord(yourWord, strings, caseSensitive) < high(dWord) then
-        wordPresent:= true
-    else
-        wordPresent:= false
-end;
-
-function containsWords(subStrings: tStringList; buffer: string; caseSensitive: boolean = false): boolean;
-{ Inconsistent naming I know; don't care. Going to rewrite the entire ubit in a bit to be less stupid anyway. }
-var z: dWord = 0;
-    y: boolean = false;
-begin
-    while (z < subStrings.Count) and (not y) do
-    begin
-        y:= pos(subStrings.Strings[z], buffer) > 1;
-        if y then writeln(#9'ignored string: ', subStrings.Strings[z]);
-        inc(z)
-    end;
-    result:= y
-end;
-
-function isNumeric(buffer: string): boolean;
-{ I thought this existed in the RTL but I can't find it. This is only smart
-  enough to handle unsigned ints because that's all we need at the moment. }
-var z: dWord = 1;
-begin
-    while (z < length(buffer)) and (buffer[z] in [' ', '0'..'9']) do
-        inc(z);
-
-    if buffer[z] in [' ', '0'..'9'] then
-        isNumeric:= true
-    else
-        isNumeric:= false
-end;
-
-function join(delimiter: char; stringList: tStringList): string;
-{ This is similar to using DelimitedText but we append, otherwise we should
-  probably just call delimitedText or just use it instead. Whatever. }
-var z: dWord;
-begin
-    join:= stringList.Strings[0];
-    if stringList.Count > 1 then
-        for z:= 1 to stringList.Count-1 do
-            join:= join + delimiter + stringList.Strings[z]
-end;
-
-function reduceWhiteSpace(buffer: string): string;
-var z: dWord = 1;
-    y: dWord;
-begin
-    result:= '';
-    while z < length(buffer) do begin
-        y:= z;
-        while (not(buffer[z] in [#9, #10, #13, ' '])) and (z < length(buffer)) do
-            inc(z);
-        if (buffer[z] in [#9, #10, #13, ' ']) then begin
-            result+= buffer[y..z-1] + ' ';
-            while (buffer[z] in [#9, #10, #13, ' ']) and (z < length(buffer)) do
-                inc(z)
-        end
-        else if z = length(buffer) then
-            result+= buffer[y..z]
-    end;
-end;
-
-function clipText(buffer: string; newLength: word): string;
-begin
-    if length(buffer) > newLength then
-        result:= buffer[1..newLength-3] + '...'
-    else
-        result:= buffer
-end;
+{ Miscellaneous }
 
 function reverse(buffer: string): string;
 var z: dWord = 1;
