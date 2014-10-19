@@ -23,12 +23,6 @@ function  join_stringList     (delimiter: char; stringList: tStringList): string
 function  split               (delimiter: char; yourString: string): kStrings;
 
 function  split_by_sequence   (sequence, buffer: string): tStringList;
-{
-procedure find_next_char      (delimiter: char; buffer: string; var position: dWord; overstep: boolean = false);
-function  get_to_next_char    (delimiter: char; buffer: string; var position: dWord; overstep: boolean = false): string;
-function  find_next_set       (delimiter: kCharSet; buffer: string; var position: dWord): string;
-function  find_next_string    (aWord: string; buffer: string; var position: dWord; ignoreCase: boolean = true): string;
-}
 
 function  extract_subStr      (buffer: string; var position: integer; subString: string): string;
 function  word_is_present     (yourWord, buffer: string; caseSensitive: boolean = false): boolean;
@@ -157,119 +151,6 @@ begin
     end
 end;
 
-procedure find_next_char(delimiter: char; buffer: string; var position: dWord; overstep: boolean = false);
-{ Look for the next delimiter, with an offset }
-var z: dWord;
-begin
-{    z:= position;
-
-{    while (buffer[position] <> delimiter) and (position < length(buffer)) do
-        inc(position);
-
-    if (position = length(buffer)) and (buffer[position] <> delimiter) then
-        position:= z // If we don't find what we're looking for then just put
-                      // it back and walk away, whistling nonchalantly.
-    else }
-    z:= pos(delimiter, buffer[position..length(buffer)]);
-    if z > 0 then begin
-        if overstep and (z < length(buffer)) then
-            inc(z, position)
-        else
-            inc(z, position-1)
-    end;}
-    position:= PosEx(delimiter, buffer, position);
-    if overstep and (position > 0) then
-        inc(position)
-end;
-
-function get_to_next_char(delimiter: char; buffer: string; var position: dWord; overstep: boolean = false): string;
-{ Returns the portion of a string from Position to the next delimiter.
-  The position of the character following the delimiter is returned in Position
-  for Looping. }
-var z: dWord;
-begin
-{    if position < length(buffer) then begin
-        z:= position;
-        while (z < length(buffer)) and (buffer[z] <> delimiter) do
-            inc(z);
-//            get_to_next_char(delimiter, buffer, z);
-
-        if (z > position) then
-        begin
-            if z = length(buffer) then
-                inc(z);
-            get_to_next_char:= buffer[position..z-1]
-        end
-
-        else if (z = position) then // I suppose I could take out this check, assuming
-            get_to_next_char:= buffer[position..z]; // the difference won't become negative
-        position:= z + 1
-    end}
-    get_to_next_char(delimiter, buffer, z, overstep);
-    if z > 0 then
-        result:= buffer[position..z-1]
-    else
-        result:= '';
-    position:= z
-end;
-
-function find_next_set(delimiter: kCharSet; buffer: string; var position: dWord): string;
-{ Returns the portion of a string from Position to the next delimiter.
-  The position of the character following the space is returned in Position
-  for Looping. }
-var z: dWord;
-begin
-{    if position < length(buffer) then begin
-        endPos:= position;
-        while (endPos < length(buffer)) and (not(buffer[endPos] in delimiter)) do
-            inc(endPos);
-//            find_next(delimiter, buffer, endPos);
-
-        if (endPos > position) then
-        begin
-            if endPos = length(buffer) then
-                inc(endPos);
-            find_next:= buffer[position..endPos-1]
-        end
-
-        else if (endPos = position) then // I suppose I could take out this check, assuming
-            find_next:= buffer[position..endPos]; // the difference won't become negative
-        position:= endPos + 1
-    end
-}
-    z:= PosSetEx(delimiter, buffer, position);
-    if z > 0 then begin
-        result:= buffer[position..z-1];
-        inc(z)
-    end else
-        result:= '';
-    position:= z
-end;
-
-
-function find_next_string(aWord: string; buffer: string; var position: dWord; ignoreCase: boolean = true): string;
-{ An optionally case-insensitive Pos() with offset }
-var z: dWord;
-    a,
-    b: string;
-begin
-    if position < length(buffer) then begin
-        z:= position;
-        if ignoreCase then
-            z:= PosEx(lowercase(aWord), lowercase(buffer), position)
-        else
-            z:= PosEx(aWord, buffer, position);
-
-        if z > 0 then
-            result:= buffer[position..z-1]
-        else
-            result:= buffer[position..length(buffer)];
-        position:= z
-    end else
-        result:= ''
-end;
-
-
 function find_word(yourWord, buffer: string; caseSensitive: boolean = false): dWord;
 { Checks for the presence of a whole word and returns its position
   or 0 if not found. Strings are 1-indexed so we don't need to waste half
@@ -354,7 +235,6 @@ begin
     while (z < subStrings.Count) and (not y) do
     begin
         y:= pos(subStrings.Strings[z], buffer) > 0;
-//??        if y then writeln(#9'ignored string: ', subStrings.Strings[z]);
         inc(z)
     end;
     result:= y
