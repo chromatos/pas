@@ -10,8 +10,8 @@ uses
   {$IFDEF UNIX}{$IFDEF UseCThreads}
   cthreads,
   {$ENDIF}{$ENDIF}
-  Classes, SysUtils, process, baseunix, CustApp, tubeyIRC, kUtils, url_title4;//,
-//  stringListList;
+  Classes, SysUtils, process, baseunix, CustApp, tubeyIRC, strutils, kUtils, url_title4;//,
+//  hives;
 
 const
     root       = '/home/toobee/';
@@ -61,7 +61,7 @@ begin
         bot.say('##', 'bacon++')
     else}
         // Should centralize the 'authentication' sometime
-        if (message.user.host = '0::1') or (message.user.nick = 'crutchy') or (ciPos('Soylent/Staff/', message.user.host) = 1) then
+        if (message.user.host = '0::1') or (message.user.nick = 'crutchy') or (TextPos('Soylent/Staff/', message.user.host) = 1) then
             bot.setMode(message.channel, '+v', message.user.nick);
 end;
 
@@ -76,18 +76,18 @@ begin
     what it's doing first. }
 
     flags:= [gtHttps, gtHttp];
-//    if (ciPos('#soylent', message.channel) = 0) and(message.channel <> '##') then
+//    if (TextPos('#soylent', message.channel) = 0) and(message.channel <> '##') then
 //        flags+= [gtHttp]; { ciri does titles here, but for now doesn't handle https
 //                             so we'll do it until it does. }
 
-    if  (ciPos('bender', message.user.user) = 0) and (ciPos('sedbot', message.user.user) = 0)
-    and (ciPos('exec', message.user.user) = 0) and (ciPos('ciri', message.user.user) = 0)
-    and (ciPos('aqu4', message.user.user) = 0) and (ciPos('supybot', message.user.user) = 0)
+    if  (TextPos('bender', message.user.user) = 0) and (TextPos('sedbot', message.user.user) = 0)
+    and (TextPos('exec', message.user.user) = 0) and (TextPos('ciri', message.user.user) = 0)
+    and (TextPos('aqu4', message.user.user) = 0) and (TextPos('supybot', message.user.user) = 0)
     and not(message.message[1] in ['.','!','$', '~']) then begin
         x:= getTitles(message.message, flags);
         if x.count > 0 then
             for z:= 0 to x.count - 1 do
-                bot.say(message.channel, '^ ' + clipText(x.Strings[z], 480));
+                bot.say(message.channel, '^ ' + clip_text(x.Strings[z], 480));
         x.free
     end
 end;
@@ -115,12 +115,12 @@ procedure tMonopolyBot.doCommand(message: kIrcMessage);
 var cmd,
     pars  : string;
     stuff : string;
-    z     : dWord;
+    z     : integer;
     authed: boolean = false;
 begin
   { for authorization, we're assuming vhosts will be checked before being authorized
     by IRC staff and also the hack we call services is still running. }
-    if (message.user.host = '0::1') or (message.user.nick = 'crutchy') or (ciPos('Soylent/Staff/', message.user.host) = 1) then
+    if (message.user.host = '0::1') or (message.user.nick = 'crutchy') or (TextPos('Soylent/Staff/', message.user.host) = 1) then
         authed:= true;
 
     z:= pos(' ', message.message);
@@ -136,7 +136,7 @@ begin
         'part'   : if pars = '' then
                        bot.part(message.channel, 'You told me to')
                    else begin
-                       stuff:= scanByDelimiter(' ', pars, z);
+                       stuff:= ExtractSubstr(pars, z, [' ']);
                        if stuff[1] in ['#', '&', '!', '.', '~'] then begin
                            message.channel:= stuff;
                            pars:= pars[z..length(pars)];
@@ -164,7 +164,7 @@ begin
                        bot.say(message.channel, intToStr(loadNaughties) + ' naughty strings loaded');
                    end;
         'kick'   : if authed and (pars <> '') then begin
-                       stuff:= scanByDelimiter(' ', pars, z);
+                       stuff:= ExtractSubstr(pars, z, [' ']);
                        bot.kick(stuff, pars[z..Length(pars)]);
                    end;
         's',
@@ -177,15 +177,15 @@ begin
                        end;
         'do',
         'me'     : if pars <> '' then bot.sayAction(message.channel, pars);
-        'invite' : bot.invite(scanByDelimiter(' ', pars, z), pars[z..length(pars)]);
+        'invite' : bot.invite(ExtractSubstr(pars, z, [' ']), pars[z..length(pars)]);
         'r'      : if pars <> '' then bot.say(message.channel, reverse(pars));
         'rdo'    : if pars <> '' then bot.sayAction(message.channel, reverse(pars));
         'sayto'  : if authed and (pars <> '') then begin
-                       stuff:= scanByDelimiter(' ', pars, z);
+                       stuff:= ExtractSubstr(pars, z, [' ']);
                        bot.say(stuff, pars[z..length(pars)])
                    end;
         'doto'   : if authed and (pars <> '') then begin
-                       stuff:= scanByDelimiter(' ', pars, z);
+                       stuff:= ExtractSubstr(pars, z, [' ']);
                        bot.sayAction(stuff, pars[z..length(pars)])
                    end;
         'topic'  : if authed and (pars <> '') then
@@ -235,13 +235,13 @@ begin
     end
     else
         if length(message.message) > 5 then showTitles(message);
-    if (ciPos('bacon--', message.message) = 1) and (message.channel = '##') then
+    if (TextPos('bacon--', message.message) = 1) and (message.channel = '##') then
         bot.say('##', 'bacon++ # bacon patrol');
 end;
 
 procedure tMonopolyBot.handleKick(message: kIrcMessage);
 begin
-    if ciPos('/soylent/staff/', message.user.host) = 0 then
+    if TextPos('/soylent/staff/', message.user.host) = 0 then
         bot.join(message.channel)
 end;
 
@@ -294,7 +294,7 @@ writeln('Instantiating');
     bot.onSocket       := @handleSocket;
     bot.onInvite       := @handleInvite;
     bot.onJoin         := @handleJoin;
-    bot.identString    := readFile(root+'.sn.irc.p');
+    bot.identString    := file2string(root+'.sn.irc.p');
 
     if not FileExists(logFile) then
         logger:= tFileStream.Create(logFile, fmCreate or fmOpenWrite)

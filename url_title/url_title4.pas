@@ -41,7 +41,7 @@ function isSafe(buffer: string): boolean;
 begin
     buffer:= lowerCase(buffer);
 //    result:= false;
-    result:= not containsWords(naughtyList, buffer, true) //then exit else
+    result:= not contains_any_strings(naughtyList, buffer, true) //then exit else
 {    if Pos('//localhost', buffer) > 0 then exit else
     if Pos('//127.', buffer) > 0 then exit else
     if Pos('//192.168', buffer) > 0 then exit else
@@ -86,18 +86,18 @@ begin
         end;
         z:= 0;
         while z < aFile.Count do begin
-            if ciPos('http/', aFile.Strings[z]) > 0 then begin
+            if TextPos('http/', aFile.Strings[z]) > 0 then begin
                 if Pos ('30', aFile.Strings[z]) > 0 then
                     inc(redirs)
                 else
                     final:= true
             end;
-            if ciPos('location', aFile.Strings[z]) > 0 then
+            if TextPos('location', aFile.Strings[z]) > 0 then
                 uri:= aFile.Strings[z][Pos(':', aFile.Strings[z])+2..length(aFile.Strings[z])];
-            if ciPos('content-type', aFile.Strings[z]) > 0 then begin
+            if TextPos('content-type', aFile.Strings[z]) > 0 then begin
                 contentType:= aFile.Strings[z];
-                if ciPos('text', contentType) > 0 then props+= [isText];
-                if (ciPos('xml', contentType) > 0) or (ciPos('html', contentType) > 0) then props+= [isXMLish];
+                if TextPos('text', contentType) > 0 then props+= [isText];
+                if (TextPos('xml', contentType) > 0) or (TextPos('html', contentType) > 0) then props+= [isXMLish];
             end;
             inc(z)
         end
@@ -166,7 +166,7 @@ begin
         for z:= 0 to lines.count-1 do begin
             buffer := lines.Strings[z];
             title  := '';
-            if ((gtHttp in someFlags) and (ciPos('http:/', buffer) > 0)) or ((gtHttps in someFlags) and (ciPos('https:/', buffer) > 0)) then begin
+            if ((gtHttp in someFlags) and (TextPos('http:/', buffer) > 0)) or ((gtHttps in someFlags) and (TextPos('https:/', buffer) > 0)) then begin
                 writeln(#9'url: ', buffer);
                 oldUri := buffer;
                 requestResult:= doRequest(buffer, aFile, fileProps, content, contentType, redirects);

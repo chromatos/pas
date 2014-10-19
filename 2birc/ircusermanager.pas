@@ -32,13 +32,14 @@ type
 
 implementation
 uses
-    kUtils;
+    //kUtils;
+  strutils;
 function string2user(buffer: string): kIrcUser;
-var z: dWord = 1;
+var z: longInt = 1;
 begin
     with string2user do begin
-        nick:= scanByDelimiter('!', buffer, z);
-        user:= scanByDelimiter('@', buffer, z);
+        nick:= ExtractSubstr(buffer, z, ['!']);
+        user:= ExtractSubstr(buffer, z, ['@']);
         host:= buffer[z..length(buffer)]
     end
 end;

@@ -124,6 +124,7 @@ type
 
 
 implementation
+uses strutils;
 
 procedure kIRCclient.doThings;
 begin
@@ -244,8 +245,8 @@ procedure kIRCclient.handleMessage(message: string);
 { This is where we actually parse the messages and dole them out to event
   handlers. }
 var s       : string;
-    z       : dWord = 1;
-    y       : dWord;
+    z       : longInt = 1;
+    y       : longInt;
     giver,
     command,
     receiver,
@@ -267,27 +268,27 @@ begin
     if message[z] = ':' then
         inc(z);
     y:= z;
-    findNext(' ', message, y);
-    inc(y);
-    value:=scanByDelimiter(' ', message, y);
-    if (length(value) > 0) and isNumeric(value) then begin
+    y:= PosEx(' ', message, y) + 1;
+
+    value:=ExtractSubstr(message, y, [' ']);
+    if (length(value) > 0) and string_is_numeric(value) then begin
         processServerReply(strToInt(value), message);
         exit
     end;
 
-    giver  := scanByDelimiter(' ', message, z);
-    command:= scanByDelimiter(' ', message, z);
+    giver  := ExtractSubstr(message, z, [' ']);
+    command:= ExtractSubstr(message, z, [' ']);
     if command = 'MODE' then begin
 // TODO
         exit
     end;
 
     uMessage.user   := string2user(giver);
-    uMessage.channel:= scanByDelimiter(' ', message, z);
-    findNext(':', message, z);
-    uMessage.message:= message[z+1..length(message)];
+    uMessage.channel:= ExtractSubstr(message, z, [' ']);
+    z:= PosEx(':', message, z) + 1;
+    uMessage.message:= message[z..length(message)];
 
-    if wordPresent(me.nick, uMessage.message) then
+    if word_is_present(me.nick, uMessage.message) then
         uMessage.flags:= uMessage.flags + [mfHighlight];
 
     case command of
