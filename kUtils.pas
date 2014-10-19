@@ -2,8 +2,6 @@
   License: wtfpl (See 'copying' file or the Internet)
 }
 
-{ This is in dire need of rewriting. Several functions are nearly the same and
-  some have dumb names. I'll get to it. }
 
 {$mode objfpc}{$h+}
 unit kUtils;
