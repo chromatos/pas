@@ -25,7 +25,6 @@ type
 
     tMonopolyBot = class(TCustomApplication)
         bot       : kIRCclient;
-
         procedure   doCommand       (message: kIrcMessage);
         procedure   handleInvite    (message: kIrcMessage);
         procedure   handleMessage   (message: kIrcMessage);
@@ -40,6 +39,7 @@ type
       protected
         procedure   DoRun;override;
       public
+        prefix    : char;
         logger    : tFileStream;
         mode      : kBotMode;
         constructor Create(TheOwner: TComponent); override;
@@ -137,7 +137,7 @@ begin
                        bot.part(message.channel, 'You told me to')
                    else begin
                        stuff:= ExtractSubstr(pars, z, [' ']);
-                       if stuff[1] in ['#', '&', '!', '.', '~'] then begin
+                       if (stuff <> '') and (stuff[1] in ['#', '&', '!', '.', '~']) then begin
                            message.channel:= stuff;
                            pars:= pars[z..length(pars)];
 
@@ -195,7 +195,7 @@ begin
                            bot.setMode(message.channel, '+o', message.user.nick)
                        else
                            bot.setMode(message.channel, '+o', pars);
-        '-o'      : if authed and (pars <> '') then
+        '-o'      : if authed then
                        if pars = '' then
                            bot.setMode(message.channel, '-o', message.user.nick)
                        else
@@ -224,7 +224,7 @@ var auth: boolean = false;
 begin
     message.message:= stripSomeControls(message.message);
 
-    if (message.message[1] = '/') and (length(message.message) > 1) then
+    if (message.message[1] = prefix) and (length(message.message) > 1) then
         doCommand(message)
     else
     if (message.user.nick = 'exec') and (message.message = 'exec_test_sn_site_down') then begin
@@ -278,8 +278,9 @@ writeln('Checking options');
 writeln('Instantiating');
     bot                := kIRCclient.create;
     bot.me.user        := 'confirms';
-    bot.me.nick        := 'NetCraft';
+    bot.me.nick        := 'NutCraft';
     bot.me.realName    := 'monopoly 2';
+    prefix             := '/';
     if FileExists(logFile + '.channels') then begin
         bot.channels.LoadFromFile(logFile + '.channels');
         DeleteFile(logFile + '.channels')
@@ -303,6 +304,7 @@ writeln('Instantiating');
 
     try
 writeln('Connecting');
+//    bot.connect('irc.sylnt.us', 6667);
     bot.connect('irc.sylnt.us', 6667);
     mode:= bmStopped;
 
