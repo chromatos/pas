@@ -54,10 +54,10 @@ uses strutils;
 { Disk i/o }
 
 function file2string(fileName: string): string;
-var x: tFileStream;
+var x: TFileStream;
 begin
     if FileExists(fileName) then begin
-        x:= TFileStream.create(fileName, fmOpenRead);
+        x:= TFileStream.Create(fileName, fmOpenRead);
         setLength(result, x.Size);
         x.Read(result[1], x.Size);
         x.Free
@@ -140,7 +140,7 @@ function extract_subStr(buffer: string; var position: integer; subString: string
 var z: integer;
 begin
     z:= PosEx(subString, buffer, position);
-    if z > 0 then begin
+    if z > position then begin
         result  := buffer[position..z-1];
         position:= z + length(subString)
     end else begin
