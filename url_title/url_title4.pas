@@ -155,7 +155,7 @@ begin
     it now, at least until total rewrite. }
 
   { Oh yeah, the real hack is curl --> files --> here instead of using pipes or
-    learning SSL. }
+    learning to https. }
     lines := TStringList.Create;
 
     aFile := a + '.' + intToStr(random(65535));
@@ -169,6 +169,7 @@ begin
             if ((gtHttp in someFlags) and (TextPos('http:/', buffer) > 0)) or ((gtHttps in someFlags) and (TextPos('https:/', buffer) > 0)) then begin
                 writeln(#9'url: ', buffer);
                 oldUri := buffer;
+                writeln('Requesting: ', buffer);
                 requestResult:= doRequest(buffer, aFile, fileProps, content, contentType, redirects);
                 if FileExists(aFile + '.head') then DeleteFile(aFile + '.head');
                 if FileExists(aFile + '.body') then DeleteFile(aFile + '.body');
