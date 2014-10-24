@@ -163,20 +163,18 @@ var z      : integer = 0;
     summary: string;
 
 begin
-    { Title }
-    z:= PosEx('<div class="article">', buffer, 1);
+{ Title }
+    z:= Pos('<div class="article"', buffer);
     if z < 1 then begin
-        z:= 1;
-        z:= PosEx('<div id="journal', buffer, z);
-//        z:= 1
+        z:= Pos('<div id="journal', buffer);
     end;
 
     z:= PosEx('<h3', buffer, z);
     z:= PosEx('>', buffer, z) + 1;
-    title+= resolveXMLents(stripHTML(extract_subStr(buffer, z, '</h3')));
+    title:= resolveXMLents(stripHTML(extract_subStr(buffer, z, '</h3')));
 
     y:= z;
-    { Comment count }
+{ Comment count }
     z:= PosEx('<!-- start template: ID 154', buffer, z);
     if z > 0 then begin
         z:= PosEx('value="-1"', buffer, z);
@@ -184,7 +182,7 @@ begin
         title += ' ' + mIRCcolor(clRed) + '(' + ExtractSubstr(buffer, z, [' ']) + ' comments)'
     end;
 
-    { Summary }
+{ Summary }
     z:= y;
     extract_subStr(buffer, z, 'div class="intro"');
     z:= PosEx('>', buffer, z) + 1;
@@ -214,7 +212,7 @@ var z      : integer = 0;
     who    : string;
 begin
     { Title }
-    z:= PosEx('<div class="article">', buffer, 0);
+    z:= PosEx('<div class="article">', buffer, 1);
     if z < 1 then begin
         z:= PosEx('<div id="journal', buffer, 1);
         if z < 1 then begin
@@ -331,7 +329,8 @@ begin
         result+= ' ' + clip_text(cleanHTMLForIRC(ExtractSubstr(buffer, z, '</div>')))), 180);
 }
         result:= reduce_white_space(stripBlockQuotes(result))
-    end;
+    end else
+        result:= ''
 end;
 
 function getSoylentPoll(buffer: string; flags: kSiteFlags): string;
@@ -380,7 +379,7 @@ var z       : integer = 0;
     summary,
     comments: string;
 begin
-    z       := PosEx('<article class="story', buffer, 1);
+    z       := Pos('<article class="story', buffer);
     z       := PosEx('>', buffer, z) + 1;
     title   := resolveXMLents(stripHTML(stripSomeControls(extract_subStr(buffer, z, '</h1>'))));
     z       := PosEx('<div', buffer, z);
@@ -389,10 +388,12 @@ begin
 //    summary:= clip_text(cleanHTMLForIRC(ExtractSubstr(buffer, z, '</div')), 180);
 
     z       := PosEx('<footer>', buffer, z);
-    z       := PosEx('<b>', buffer, z) + 2;
+    z       := PosEx('<b>', buffer, z) + 3;
 
     comments:= stripSomeControls(extract_subStr(buffer, z, '</b>'));
-    result  := reduce_white_space(mIRCcolor(clBlue) + 'Pipedot Article: ' + mIRCcolor(clGreen) + title + mIRCcolor(clBlue) + ' (' + comments + ' comments) ');// + mIRCcolor(clNone) + summary);
+    result  := reduce_white_space(mIRCcolor(clBlue) + 'Pipedot Article: '
+             + mIRCcolor(clGreen) + title
+             + mIRCcolor(clBlue) + ' (' + comments + ' comments) ');// + mIRCcolor(clNone) + summary);
 end;
 
 function getPipedotComment(buffer: string; flags: kSiteFlags): string;
@@ -403,7 +404,7 @@ var z      : integer = 0;
     who    : string;
 begin
    { title }
-     z:= PosEx('<article class="comment', buffer, 1);
+     z:= Pos('<article class="comment', buffer);
      z:= PosEx('<h1', buffer, z);
      z:= PosEx('>', buffer, z) + 1;
 
@@ -423,7 +424,10 @@ begin
      inc(z);
      summary:= clip_text(cleanHTMLForIRC(scanToWord('<footer>', buffer, z)), 180);
 }
-     result := reduce_white_space(mIRCcolor(clBlue) + 'Pipedot Comment by ' + who + ': ' + mIRCcolor(clGreen) + title + ' ' + mIRCcolor(clBlue) + score);// + mIRCcolor(clNone) + ' ' + summary);
+     result := reduce_white_space(mIRCcolor(clBlue)
+             + 'Pipedot Comment by ' + who + ': '
+             + mIRCcolor(clGreen) + title + ' '
+             + mIRCcolor(clBlue) + score);// + mIRCcolor(clNone) + ' ' + summary);
 end;
 
 function getXMLtitle(buffer: string): string;
@@ -468,7 +472,7 @@ begin
     while z < length(buffer) do begin
         if buffer[z] <> '<' then
             result+= ExtractSubstr(buffer, z, ['<']);
-        y:= ExtractSubstr(buffer, z, ['<']);
+        y:= ExtractSubstr(buffer, z, ['>']);
         if (length(y) > 1) and ((y[1..2] = 'br') or (y[1..2] = '/p')) then
             result+= ' '
     end
@@ -479,16 +483,18 @@ function stripBlockQuotes(buffer: string): string;
 var z: integer = 1;
     y: integer;
 begin
-    while z < length(buffer) do begin
+    while (z > 0) and (z < length(buffer)) do begin
         z:= PosEx('<', buffer, z);
-        y:= z;
-        if TextPos('blockquote', ExtractSubstr(buffer, z, ['>'])) > 0 then begin
-            z:= PosEx('</blockquote', buffer, z);
-            z:= PosEx('>', buffer, z) + 1;
+        if z > 0 then begin
+            y:= z;
+            if TextPos('blockquote', ExtractSubstr(buffer, z, ['>'])) > 0 then begin
+                z:= PosEx('</blockquote', buffer, z);
+                z:= PosEx('>', buffer, z) + 1;
 
-            delete(buffer, y, z - y);
-            z:= y
-        end;
+                delete(buffer, y, z - y);
+                z:= y
+            end
+        end
     end;
     result:= buffer
 end;
