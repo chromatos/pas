@@ -5,6 +5,8 @@
   Some day, I intend to make this OO so each scraper can be assigned as required.
   It's kind of silly for each one to have its own code to assemble the titles, summaries
   and colors.
+
+  License: wtfpl (See 'copying' file or the Internet)
 }
 
 unit textExtractors;

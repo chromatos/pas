@@ -1,5 +1,6 @@
 { Page title-grabbing script with much hackishness.
-  License: WTFPL (see /copying)
+
+  License: wtfpl (See 'copying' file or the Internet)
 }
 
 unit url_title4;

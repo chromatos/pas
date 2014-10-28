@@ -1,5 +1,6 @@
 { A useless 2bIRC-based robot.
-  License: WTFPL (see /copying)
+
+  License: wtfpl (See 'copying' file or the Internet)
 }
 
 program monopolybot;
@@ -10,7 +11,8 @@ uses
   {$IFDEF UNIX}{$IFDEF UseCThreads}
   cthreads,
   {$ENDIF}{$ENDIF}
-  Classes, SysUtils, process, baseunix, CustApp, tubeyIRC, strutils, kUtils, url_title4;//,
+  Classes, SysUtils, process, baseunix, CustApp, tubeyIRC, strutils, kUtils,
+  url_title4;//,
 //  hives;
 
 const
@@ -280,7 +282,7 @@ writeln('Instantiating');
     bot.me.user        := 'confirms';
     bot.me.nick        := 'NutCraft';
     bot.me.realName    := 'monopoly 2';
-    prefix             := '/';
+    prefix             := '=';
     if FileExists(logFile + '.channels') then begin
         bot.channels.LoadFromFile(logFile + '.channels');
         DeleteFile(logFile + '.channels')

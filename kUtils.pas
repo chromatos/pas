@@ -1,4 +1,5 @@
 { This is a small hunk of string processing crap
+
   License: wtfpl (See 'copying' file or the Internet)
 }
 
@@ -39,9 +40,11 @@ function  string_is_numeric   (buffer: string): boolean;
 function  stripSomeControls   (buffer: string): string;
 function  strip_set           (theSet: kCharSet; buffer: string): string;
 
-function  reduce_white_space  (buffer: string): string;
+function  reduce_white_space  (buffer: string): string; // Reduces consecutive whitespace characters
 
 function  clip_text           (buffer: string; newLength: dWord): string;
+
+function  delete_range        (buffer, from_what, to_what: string): string; // Remove a substring bounded by inclusive substrings
 
 function  reverse             (buffer: string): string;
 
@@ -309,6 +312,28 @@ begin
         result:= buffer[1..newLength-3] + '...'
     else
         result:= buffer
+end;
+
+function delete_range(buffer, from_what, to_what: string): string;
+{ Find a range within a string bounded by substrings and delete them, including the bounds.
+  Leave a substring empty to align the range and string ends. }
+var z,
+    y: integer;
+begin
+    if from_what <> '' then
+        z:= Pos(from_what, buffer)
+    else
+        z:= 1;
+
+    if z > 0 then begin
+        if to_what <> '' then begin
+            y:= PosEx(to_what, buffer, z + length(from_what));
+            if y = 0 then
+                y:= length(buffer);
+        end else
+            y:= length(buffer);
+        Delete(buffer, z, y-z)
+    end
 end;
 
 
