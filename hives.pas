@@ -44,8 +44,8 @@ type
     protected
         function  getItem(index: string): string;virtual;abstract;
         procedure setItem(index: string; aValue: string);virtual;abstract;
-    public
-        constructor Create; virtual;
+{    public
+        constructor Create; virtual;}
     public
         procedure add(index: string; aValue: string);virtual;abstract;
         procedure del(index: string);virtual;abstract;
@@ -58,14 +58,14 @@ type
     kHash_hive = class(kHive_ancestor)
         content: TFPStringHashTable;
 
-        function  getItem(index: string): string;virtual;
-        procedure setItem(index: string; aValue: string);virtual;
+        function  getItem(index: string): string;override;
+        procedure setItem(index: string; aValue: string);override;
 
-        procedure add(index: string; aValue: string);virtual;
-        procedure del(index: string);virtual;
+        procedure add(index: string; aValue: string);override;
+        procedure del(index: string);override;
 
-        function  to_stream: string;virtual;
-        procedure from_stream(aStream: string);virtual;
+        function  to_stream: string;override;
+        procedure from_stream(aStream: string);override;
       private
         buffer: string; // because the stupid iterator has to be a method and they
                         // don't just give a numerically-indexed accessor
@@ -75,14 +75,14 @@ type
     kStringList_hive = class(kHive_ancestor)
         content: tStringList;
 
-        function  getItem(index: string): string;virtual;
-        procedure setItem(index: string; aValue: string);virtual;
+        function  getItem(index: string): string;override;
+        procedure setItem(index: string; aValue: string);override;
 
-        procedure add(index: string; aValue: string);virtual;
-        procedure del(index: string);virtual;
+        procedure add(index: string; aValue: string);override;
+        procedure del(index: string);override;
 
-        function  to_stream: string;virtual;
-        procedure from_stream(aStream: string);virtual;
+        function  to_stream: string;override;
+        procedure from_stream(aStream: string);override;
     end;
 
 
@@ -108,10 +108,10 @@ uses strutils, sha1, kUtils, tanks;
 
 { kHive_ancestor }
 
-constructor kHive_ancestor.Create;
+{constructor kHive_ancestor.Create;
 begin
   inherited;
-end;
+end;      }
 
 { kHive_cluster }
 
@@ -229,6 +229,8 @@ end;
 
 procedure kStringList_hive.from_stream(aStream: string);
 begin
+    if content = nil then
+        content:= tStringList.Create;
     content.Clear;
     content.AddStrings(detank2list(aStream))
 end;
@@ -282,7 +284,7 @@ var z    : integer;
 
 begin
     itemz:= detank2list(aStream);
-    if z > 0 then
+    if z > 0 then begin
         for z:= 0 to itemz.count - 1 do begin
             item := detank(itemz[z]);
             y    := Pos(#30, item);
@@ -290,14 +292,13 @@ begin
             value:= item[y+1..length(item)];
             content.Add(key, value)
         end
+    end;
 end;
 
 function kHash_hive.to_stream: string;
-var z     : dWord;
 begin
-    for z:= 0 to content.Count-1 do
-        content.Iterate(@iteratee);
-    result:= tank(buffer, [so_sha1]);
+    content.Iterate(@iteratee);
+    result:= tank(buffer, [so_sha1])
 end;
 
 procedure kHash_hive.iteratee(Item: String; const Key: string; var Continue: Boolean);
