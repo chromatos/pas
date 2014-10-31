@@ -37,20 +37,22 @@ type
 
 
     kHive_ancestor = class(TFPHashObject)
+    private
         permissions        : kCellPermissions;
         cell_type          : kCellType;
         cell_properties    : kCellProperties;
-
-        property  items[index: string]: string;
-
-        procedure add(index: string; aValue: string);virtual;abstract;
-        procedure del(index: string);virtual;abstract;
-
+    protected
         function  getItem(index: string): string;virtual;abstract;
         procedure setItem(index: string; aValue: string);virtual;abstract;
-
+    public
+        constructor Create; virtual;
+    public
+        procedure add(index: string; aValue: string);virtual;abstract;
+        procedure del(index: string);virtual;abstract;
         function  to_stream: string;virtual;abstract;
         procedure from_stream(aStream: string);virtual;abstract;
+    public
+        property  items[index: string]: string read getItem write setItem; default;
     end;
 
     kHash_hive = class(kHive_ancestor)
@@ -103,6 +105,15 @@ type
 
 implementation
 uses strutils, sha1, kUtils, tanks;
+
+{ kHive_ancestor }
+
+constructor kHive_ancestor.Create;
+begin
+  inherited;
+end;
+
+{ kHive_cluster }
 
 function kHive_cluster.add_list_hive(name: string; permissions: kCellPermissions): boolean;
 var hive: kStringList_hive;
