@@ -19,7 +19,7 @@ function  splitByType         (yourString: string; skipWhiteSpace: boolean = tru
 
 function  split               (delimiter: char; yourString: string): tStringList; // These are unnecessary because
 function  join_stringList     (delimiter: char; stringList: tStringList): string; // we're using tStringList now.
-function  split               (delimiter: char; yourString: string): kStrings;
+function  split2array         (delimiter: char; yourString: string): kStrings;
 
 function  split_by_sequence   (sequence, buffer: string): tStringList;
 
@@ -339,7 +339,7 @@ end;
 
 { String splitting }
 
-function split(delimiter: char; yourString: string): kStrings;
+function split2array(delimiter: char; yourString: string): kStrings;
 var z,
     y,
     aIndex: integer;
@@ -358,17 +358,17 @@ begin
     while z <= length(yourString) do begin
         inc(z);
             if yourString[z] in [delimiter] then begin
-                if length(split) = aIndex then setLength(split, aIndex+8);
-                split[aIndex]:= yourString[y..z-1];
+                if length(result) = aIndex then setLength(result, aIndex+8);
+                result[aIndex]:= yourString[y..z-1];
                 inc(aIndex);
                 inc(z);
                 y:= z
             end else
             if z = length(yourString) then
-                split[aIndex]:= yourString[y..z]
+                result[aIndex]:= yourString[y..z]
         end
     end;
-    setLength(split, aIndex)
+    setLength(result, aIndex)
 end;
 
 

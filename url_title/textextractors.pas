@@ -73,6 +73,7 @@ begin
 end;
 
 function mIRCcolor(color: tColor): string;
+{ We pad all the color codes because the protocol was designed by a tard }
 begin
     case color of
         clNone     : result:= #15;
@@ -91,8 +92,7 @@ begin
         clLtBlue   : result:= #3'12';
         clLtMagenta: result:= #3'13';
         clGray     : result:= #3'14';
-        clLtGray   : result:= #3'15';
-
+        clLtGray   : result:= #3'15'
     end
 end;
 
