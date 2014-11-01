@@ -71,10 +71,15 @@ end;
 procedure string2File(filename, buffer: string; append: boolean = false);
 var x: tFileStream;
 begin
-    if append and FileExists(filename) then
-        x:= TFileStream.create(fileName, fmAppend)
+    if FileExists(filename) then begin
+        if append then
+            x:= TFileStream.create(fileName, fmAppend)
+        else
+            x:= TFileStream.create(fileName, fmOpenWrite)
+    end
     else
-        x:= TFileStream.create(fileName, fmOpenWrite);
+        x:= TFileStream.create(fileName, fmCreate);
+
     x.WriteBuffer(buffer[1], length(buffer));
     x.Free
 end;

@@ -175,7 +175,6 @@ begin
     result:= tStringList.Create;
     while z < l do begin
         b:= detank(buffer, z);
-        writeln('z: ', z, '; ', b);
         if b <> '' then
             result.Append(b)
     end
