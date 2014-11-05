@@ -24,7 +24,7 @@ unit tanks;
 interface
 
 uses
-    Classes, SysUtils;
+    Classes, SysUtils, kUtils;
 
 type
     kSerial_options = set of (so_md5, so_sha1);
@@ -32,12 +32,20 @@ type
     eChecksum_mismatch = class(Exception);
 
 
-function tank       (buffer: string; options: kSerial_options): string;
-function tank       (strings: tStringList; options: kSerial_options): string;
+function tank          (buffer: string; options: kSerial_options): string;
+function tank          (strings: tStringList; options: kSerial_options): string;
 
-function detank     (buffer: string): string;
-function detank     (buffer: string; var offset: integer): string;
-function detank2list(buffer: string): tStringList;
+function detank        (buffer: string): string;
+function detank        (buffer: string; var offset: integer): string;
+function detank2list   (buffer: string): tStringList;
+
+function tank2keyvalue(buffer: string): kKeyValue;
+function tank2keyvalue(buffer: string; var offset: integer): kKeyValue;
+function keyvalue2tanks(kv: kKeyValue): string;
+function keyvalue2tanks(key, value: string): string;
+
+function keyvalues2tanks(keyvals: kKeyValues): string;
+function tanks2keyvalues(buffer: string): kKeyValues;
 
 implementation
 uses
@@ -79,12 +87,9 @@ end;
 function detank(buffer: string; var offset: integer): string;
 var z              : integer;
     y              : integer = 0;
-    x              : integer = 0;
     expected_length: integer = 0;
-    expected_hash  : string  = '';
     l              : integer;
     options        : string  = '';
-    option         : string;
 begin
     l:= length(buffer);
 
@@ -163,7 +168,7 @@ end;
 function detank(buffer: string): string;
 var z: integer = 1;
 begin
-    result:= detank(buffer, z);
+    result:= detank(buffer, z)
 end;
 
 function detank2list(buffer: string): tStringList;
@@ -175,9 +180,69 @@ begin
     result:= tStringList.Create;
     while z < l do begin
         b:= detank(buffer, z);
+
         if b <> '' then
             result.Append(b)
     end
+end;
+
+function tank2keyvalue(buffer: string): kKeyValue;
+var z: integer = 1;
+    b: string;
+begin
+    b:= detank(buffer);
+    result.key  := detank(b, z);
+    result.value:= detank(b, z)
+end;
+
+function tank2keyvalue(buffer: string; var offset: integer): kKeyValue;
+var z: integer = 1;
+    b: string;
+begin
+    b:= detank(buffer, offset);
+    result.key  := detank(b, z);
+    result.value:= detank(b, z)
+end;
+
+function keyvalue2tanks(kv: kKeyValue): string;
+begin
+    result:= tank(tank(kv.key, []) + tank(kv.value, []), [])
+end;
+
+function keyvalue2tanks(key, value: string): string;
+begin
+    result:= tank(tank(key, []) + tank(value, []), [])
+end;
+
+function keyvalues2tanks(keyvals: kKeyValues): string;
+var z: integer = 0;
+begin
+    for z:= 0 to high(keyvals) do
+        result+= keyvalue2tanks(keyvals[z]);
+    result:= tank(result, [])
+end;
+
+function tanks2keyvalues(buffer: string): kKeyValues;
+var z : integer = 1;
+    y : integer = 0;
+    l : integer = 0;
+    rl: integer = 8;
+    b : string;
+begin
+    b:= buffer;//b:=detank(buffer);
+    l:= length(b);
+    setLength(result, rl);
+
+    while z < l do begin
+        result[y]:= tank2keyvalue(b, z);
+        inc(y);
+        if y = rl then
+        begin
+            inc(rl, 8);
+            setLength(result, rl)
+        end;
+    end;
+    setLength(result, y - 1)
 end;
 
 end.
