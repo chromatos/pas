@@ -134,6 +134,17 @@ type
         procedure load           (path: string);
         procedure save           (path: string);
 
+        procedure to_console     (hive: string);
+      private
+        function  kGetItem       (index: string; permission: string): string;
+        procedure kSetItem       (index: string; permission: string; aValue: string);
+        function  kGetPerm       (index: string): string;
+        procedure kSetPerm       (index: string; perm: string);
+      public
+        lastError: string;
+      public
+        property  content[index: string;permission:string]: string read kGetItem write kSetItem; default;
+        property  permission[index: string]: string read kGetPerm write kSetPerm;
       private
         dirty: boolean;
     end;
@@ -142,6 +153,9 @@ type
 
 implementation
 uses strutils, sha1, kUtils, tanks;
+
+const
+    c_ref= '## Error in cell reference: missing ';
 
 { I have no idea why I made these separate functions. }
 
@@ -180,13 +194,14 @@ begin
     while z+1 < y.Count do begin
         case y.Strings[z] of
             'r': begin
-                     inc(z);
+                     inc(z, 2);
                      result.r:= str2perm(y.Strings[z]);
                  end;
             'w': begin
-                     inc(z);
+                     inc(z, 2);
                      result.w:= str2perm(y.Strings[z]);
                  end
+            else inc(z);
         end
     end
 end;
@@ -259,14 +274,21 @@ end;
 function kHive_cluster.del_hive(name: string): boolean;
 var aHive: kHive_ancestor;
 begin
+    lastError:= '';
     try
         dirty := true;
         aHive := kHive_ancestor(Find(name));
+        if aHive = nil then begin
+            lastError:= 'Hive "' + name + '" could not be deleted because it doesn''t exist';
+            result   := false;
+            exit
+        end;
         aHive.free;
         DeleteFile(ConcatPaths([theDirectory, name+'.hive']));
         result:= true
     except
-        result:= false
+        result   := false;
+        lastError:= 'Dunno what happened. The exceptional hive was "' + name + '"';
     end;
 end;
 
@@ -346,6 +368,117 @@ begin
         string2File(ConcatPaths([path, 'root.hive']), tank(buffer, [so_sha1]));
         dirty:= false
     end
+end;
+
+procedure kHive_cluster.to_console(hive: string);
+var z    : integer;
+    aHive: kHive_ancestor;
+begin
+    if hive <> '' then
+    begin
+        aHive:= kHive_ancestor(Find(hive));
+        if aHive <> nil then
+            aHive.to_console
+        else
+            writeln('Hive "', hive, '" does not exist; can''t dump!')
+    end else begin
+        writeln('No hive specified; dumping entire hive cluster');
+        for z:= 0 to Count-1 do
+            kHive_ancestor(Items[z]).to_console
+    end
+end;
+
+function resolve_path(path: string): kKeyValue;
+var z: integer;
+begin
+    z:= pos('/', path);
+    if z = 1 then begin      // Allow a '/' at start for 'root' but still
+        PosEx('/', path, z); // require a later '/' to delimit the node levels.
+        if z > 1 then begin
+            path:= path[2..length(path)];
+            dec(z) // Since we nuked the first character.
+        end
+        else
+            z:= 0
+    end;
+    if z > 1 then
+        result.key:= path[1..z-1]
+    else
+        result.key:= '';
+    if z < length(path) then
+        result.value:=path[z+1..length(path)]
+    else
+        result.value:= ''
+end;
+
+function kHive_cluster.kGetItem(index: string; permission: string): string;
+var kv    : kKeyValue;
+    aHive : kHive_ancestor;
+begin
+    lastError:= '';
+    result   := '';
+    kv       := resolve_path(index);
+    if kv.key = '' then
+    begin
+        lastError:= c_ref + 'hive name';
+        exit
+    end;
+    if kv.value = '' then
+    begin
+        lastError:= c_ref + 'cell name';
+        exit
+    end;
+
+    aHive := kHive_ancestor(Find(kv.key));
+    if aHive <> nil then begin
+        if str2perm(permission) <= str2perms(aHive.Permissions).r then
+            result:= aHive.items[kv.value]
+        else
+        begin
+            result:= '';
+            lastError:= 'Not enough permissions for ' + index
+        end
+    end
+    else
+        lastError:= '## Hive not found: ' + index
+end;
+
+procedure kHive_cluster.kSetItem(index: string; permission: string; aValue: string);
+var kv   : kKeyValue;
+    aHive: kHive_ancestor;
+begin
+    lastError:= '';
+    kv       := resolve_path(index);
+    if kv.key = '' then
+    begin
+        lastError:= c_ref + 'hive name';
+        exit
+    end;
+    if kv.value = '' then
+    begin
+        lastError:= c_ref + 'cell name';
+        exit
+    end;
+
+    aHive := kHive_ancestor(Find(kv.key));
+    if aHive <> nil then begin
+        if str2perm(permission) <= str2perms(aHive.Permissions).r then
+            aHive.items[kv.value]:= aValue
+        else
+            lastError:= 'You require additional permissions for ' + index;
+    end
+    else
+        lastError:= '## Hive not found' + index
+end;
+
+function kHive_cluster.kGetPerm(index: string): string;
+begin
+    result:= kHive_ancestor(Find(index)).Permissions
+end;
+
+procedure kHive_cluster.kSetPerm(index: string; perm: string);
+begin
+    kHive_ancestor(Find(index)).Permissions:=perm
 end;
 
 
