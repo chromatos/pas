@@ -126,7 +126,7 @@ type
         theDirectory: string;
 
 
-        function  add_hive       (name, h_class: string; permissions: kHivePermissions): kHive_ancestor;
+        function  add_hive       (name, h_class: string; permissions: string): kHive_ancestor;
         function  add_list_hive  (name: string; permissions: kHivePermissions): kList_hive;
         function  add_keyval_hive(name: string; permissions: kHivePermissions): kKeyVal_hive;
         function  del_hive       (name: string): boolean;
@@ -230,7 +230,7 @@ end;
 
 { kHive_cluster }
 
-function kHive_cluster.add_hive(name, h_class: string; permissions: kHivePermissions): kHive_ancestor;
+function kHive_cluster.add_hive(name, h_class: string; permissions: string): kHive_ancestor;
 begin
     if name = '' then
         raise eHive_error.Create('Empty hive name')
@@ -238,8 +238,8 @@ begin
         raise eHive_error.Create('Empty hive class');
 
     case h_class of
-        'keyvalue': result:= add_keyval_hive(name, permissions);
-        'list'    : result:= add_list_hive(name, permissions);
+        'keyvalue': result:= add_keyval_hive(name, str2perms(permissions));
+        'list'    : result:= add_list_hive(name, str2perms(permissions));
         else
             raise eHive_error.Create('Undefined hive class: ' + h_class)
     end
@@ -299,7 +299,7 @@ var z      : integer = 0;
     buffer : string;
     hives  : tStringList;
     aHive  : kHive_ancestor;
-    perms  : kHivePermissions;
+    perms  : string;
     props  : kKeyValues;
 
     h_name : string;
@@ -318,15 +318,14 @@ begin
         props  := tanks2keyvalues(hives.Strings[z]);
         h_name := '';
         h_class:= '';
-        perms.r:= cp_No_touch;
-        perms.w:= cp_No_touch;
+        perms  := 'r:none;w:none';
 
         for y:= 0 to length(props)-1 do
         begin
             case props[y].key of
                 'name'       : h_name := props[y].value;
                 'class'      : h_class:= props[y].value;
-                'permissions': perms  := str2perms(props[y].value);
+                'permissions': perms  := props[y].value;
             end
         end;
 
