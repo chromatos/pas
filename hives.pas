@@ -4,6 +4,9 @@
   have to rewrite the entire thing to disk every time something changes.
   Actually, hives are flagged as dirty buffers and they get written periodically.
 
+  For storage, we abuse the shit out of the serialized 'tank' strings instead
+  of just using a database or something normal.
+
   The root node is a hashlist and then each hive under it is either another hashlist
   (for key/value) or a stringlist (for series).
 
@@ -20,11 +23,11 @@ uses
     Classes, SysUtils, contnrs;
 
 type
-    kRWModes = (wm_No_touch, // don't let strangers touch this
-                wm_Helmet,   // 'special' people, like admins
-                wm_Pleebs);  // anyone can poke this
+    kRWModes = (cp_No_touch, // don't let strangers touch this
+                cp_Helmet,   // 'special' people, like admins
+                cp_Pleebs);  // anyone can poke this
 
-    kCellPermissions = record
+    kHivePermissions = record
         r,
         w: kRWModes
     end;
@@ -40,7 +43,7 @@ type
 
     kHive_ancestor = class(TFPHashObject)
       private
-        permissions            : kCellPermissions;
+        kPermissions           : kHivePermissions;
         cell_type              : kCellType;
         cell_properties        : kCellProperties;
 
@@ -49,6 +52,8 @@ type
         function    getItem    (index: string): string;virtual;abstract;
         procedure   setItem    (index: string; aValue: string);virtual;abstract;
         function    getRandom  : string;virtual;abstract;
+        procedure   setPerms   (permissions: string);
+        function    getPerms   : string;
       public
         constructor Create     (HashObjectList:TFPHashObjectList;const s:shortstring);
       public
@@ -56,59 +61,78 @@ type
         procedure   del        (index: string);virtual;abstract;
         function    to_stream  : string;virtual;abstract;
         procedure   from_stream(aStream: string);virtual;abstract;
+        procedure   to_console;virtual;abstract;
       public
         property    items[index: string]: string read getItem write setItem; default;
         property    count      : integer read getCount;
+        property    Permissions: string read getPerms write setPerms;
     end;
 
-    kHash_hive = class(kHive_ancestor)
+    { kKeyVal_hive }
+
+    kKeyVal_hive = class(kHive_ancestor)
         content: TFPStringHashTable;
 
-        function  getItem    (index: string): string;override;
-        procedure setItem    (index: string; aValue: string);override;
+        function    getItem    (index: string): string;override;
+        procedure   setItem    (index: string; aValue: string);override;
 
-        procedure add        (index: string; aValue: string);override;
-        procedure del        (index: string);override;
+        procedure   add        (index: string; aValue: string);override;
+        procedure   del        (index: string);override;
 
-        function  to_stream  : string;override;
-        procedure from_stream(aStream: string);override;
+        function    to_stream  : string;override;
+        procedure   from_stream(aStream: string);override;
+      public
+        constructor Create     (HashObjectList:TFPHashObjectList;const s:shortstring);
       protected
-        function  getRandom  : string;override;
+        function    getRandom  : string;override;
+      public
+        procedure   to_console;override;
       private
         buffer: string; // because the stupid iterator has to be a method and they
                         // don't just give a numerically-indexed accessor
-        procedure iteratee   (Item: String; const Key: string; var Continue: Boolean);
-        function  getCount   : integer;override;
+        procedure   iteratee     (Item: String; const Key: string; var Continue: Boolean);
+        procedure   dump_iteratee(Item: String; const Key: string; var Continue: Boolean);
+        function    getCount     : integer;override;
     end;
 
-    kStringList_hive = class(kHive_ancestor)
+    { kList_hive }
+
+    kList_hive = class(kHive_ancestor)
         content: tStringList;
 
-        function  getItem    (index: string): string;override;
-        procedure setItem    (index: string; aValue: string);override;
+        function    getItem    (index: string): string;override;
+        procedure   setItem    (index: string; aValue: string);override;
 
-        procedure add        (index: string; aValue: string);override;
-        procedure del        (index: string);override;
+        procedure   add        (index: string; aValue: string);override;
+        procedure   del        (index: string);override;
 
-        function  to_stream  : string;override;
-        procedure from_stream(aStream: string);override;
+        function    to_stream  : string;override;
+        procedure   from_stream(aStream: string);override;
+      public
+        constructor Create     (HashObjectList:TFPHashObjectList;const s:shortstring);
+      public
+        procedure   to_console;override;
       protected
-        function  getRandom  : string;override;
+        function    getRandom  : string;override;
       private
-        function  getCount   : integer;override;
+        function    getCount   : integer;override;
     end;
 
+
+    { kHive_cluster }
 
     kHive_cluster = class(TFPHashObjectList)
       public
         theDirectory: string;
 
-        function  add_list_hive(name: string; permissions: kCellPermissions): kStringList_hive;
-        function  add_hash_hive(name: string; permissions: kCellPermissions): kHash_hive;
-        function  del_hive     (name: string): boolean;
 
-        procedure load         (path: string);
-        procedure save         (path: string);
+        function  add_hive       (name, h_class: string; permissions: kHivePermissions): kHive_ancestor;
+        function  add_list_hive  (name: string; permissions: kHivePermissions): kList_hive;
+        function  add_keyval_hive(name: string; permissions: kHivePermissions): kKeyVal_hive;
+        function  del_hive       (name: string): boolean;
+
+        procedure load           (path: string);
+        procedure save           (path: string);
 
       private
         dirty: boolean;
@@ -119,40 +143,113 @@ type
 implementation
 uses strutils, sha1, kUtils, tanks;
 
+{ I have no idea why I made these separate functions. }
+
+function perm2string(perm: kRWModes): string;
+begin
+    case perm of
+        cp_No_touch: result:= 'none';
+        cp_Helmet  : result:= 'some';
+        cp_Pleebs  : result:= 'everyone';
+    else
+        result:= 'none' // Err on the side of caution. The constructor is
+                        // supposed to be filling this in; it's not
+    end
+end;
+
+function perms2string(perms: kHivePermissions): string;
+begin
+    result:= 'r:' + perm2string(perms.r) + ';'
+           + 'w:' + perm2string(perms.w)
+end;
+
+function str2perm(aString: string): kRWModes;
+begin
+    case aString of
+        'none'    : result:= cp_No_touch;
+        'some'    : result:= cp_Helmet;
+        'everyone': result:= cp_Pleebs;
+    end
+end;
+
+function str2perms(aString: string): kHivePermissions;
+var y: tStringList;
+    z: integer = 0;
+begin
+    y:= splitByType(aString);
+    while z+1 < y.Count do begin
+        case y.Strings[z] of
+            'r': begin
+                     inc(z);
+                     result.r:= str2perm(y.Strings[z]);
+                 end;
+            'w': begin
+                     inc(z);
+                     result.w:= str2perm(y.Strings[z]);
+                 end
+        end
+    end
+end;
+
+
 { kHive_ancestor }
+
+procedure kHive_ancestor.setPerms(permissions: string);
+begin
+    kPermissions:= str2perms(permissions)
+end;
+
+function kHive_ancestor.getPerms: string;
+begin
+    result:= perms2string(kPermissions)
+end;
 
 constructor kHive_ancestor.Create(HashObjectList:TFPHashObjectList;const s:shortstring);
 begin
     inherited;
-    cell_properties:= [];
-    permissions.r  := wm_No_touch;
-    permissions.w  := wm_No_touch;
+    cell_properties := [];
+    kPermissions.r  := cp_No_touch;
+    kPermissions.w  := cp_No_touch;
 end;
 
 
 { kHive_cluster }
 
-function kHive_cluster.add_list_hive(name: string; permissions: kCellPermissions): kStringList_hive;
+function kHive_cluster.add_hive(name, h_class: string; permissions: kHivePermissions): kHive_ancestor;
+begin
+    if name = '' then
+        raise eHive_error.Create('Empty hive name')
+    else if h_class = '' then
+        raise eHive_error.Create('Empty hive class');
+
+    case h_class of
+        'keyvalue': result:= add_keyval_hive(name, permissions);
+        'list'    : result:= add_list_hive(name, permissions);
+        else
+            raise eHive_error.Create('Undefined hive class: ' + h_class)
+    end
+end;
+
+function kHive_cluster.add_list_hive(name: string; permissions: kHivePermissions): kList_hive;
 begin
     try
-       result:= kStringList_hive.Create(self, name);
-       result.content    := tStringList.Create;
-       result.cell_type  := ct_StringList;
-       result.permissions:= permissions;
-       dirty             := true;
+       result             := kList_hive.Create(self, name);
+       result.cell_type   := ct_StringList;
+       result.kPermissions:= permissions;
+       dirty              := true;
     except
         on EDuplicate do result:= nil
     end
 end;
 
-function kHive_cluster.add_hash_hive(name: string; permissions: kCellPermissions): kHash_hive;
+
+function kHive_cluster.add_keyval_hive(name: string; permissions: kHivePermissions): kKeyVal_hive;
 begin
     try
-       result            := kHash_hive.Create(self, name);
-       result.content    := TFPStringHashTable.Create;
-       result.cell_type  := ct_Hashlist;
-       result.permissions:= permissions;
-       dirty             := true;
+       result             := kKeyVal_hive.Create(self, name);
+       result.cell_type   := ct_Hashlist;
+       result.kPermissions:= permissions;
+       dirty              := true;
     except
         on EDuplicate do result:= nil
     end
@@ -162,49 +259,56 @@ end;
 function kHive_cluster.del_hive(name: string): boolean;
 var aHive: kHive_ancestor;
 begin
-    dirty:= true;
-    aHive:= kHive_ancestor(Find(name));
-    aHive.free;
-    DeleteFile(ConcatPaths([theDirectory, name+'.hive']))
+    try
+        dirty := true;
+        aHive := kHive_ancestor(Find(name));
+        aHive.free;
+        DeleteFile(ConcatPaths([theDirectory, name+'.hive']));
+        result:= true
+    except
+        result:= false
+    end;
 end;
 
 
 procedure kHive_cluster.load(path: string);
-var z     : integer;
-    y     : integer;
-    x     : integer;
-    buffer: string;
-    hives : tStringList;
-    aHive : kHive_ancestor;
-    perms : kCellPermissions;
-    h_name: string;
-    h_type: string;
+var z      : integer = 0;
+    y      : integer = 0;
+    buffer : string;
+    hives  : tStringList;
+    aHive  : kHive_ancestor;
+    perms  : kHivePermissions;
+    props  : kKeyValues;
+
+    h_name : string;
+    h_class: string;
 begin
     theDirectory:= path;
     buffer      := file2string(ConcatPaths([path, 'root.hive']));
 
-    if buffer = '' then begin // It's either empty or non-existant. Either way
-        exit;                 // doesn't matter but we should probably raise an
-    end;                      // exception to that.
+    if buffer = '' then // It's either empty or non-existant.
+        raise EFOpenError.Create('Could not open root hive in ' + path);
 
     hives:= detank2list(detank(buffer));
 
     for z:= 0 to hives.Count - 1 do
     begin
-        y     := Pos(':', hives.Strings[z]);
-        h_name:= hives.Strings[z][1..y-1];
-        h_type:= hives.Strings[z][y+1..length(hives.Strings[z])];
-        if h_name = '' then
-            raise eHive_error.Create('Empty hive name')
-        else if h_type = '' then
-            raise eHive_error.Create('Empty hive class');
+        props  := tanks2keyvalues(hives.Strings[z]);
+        h_name := '';
+        h_class:= '';
+        perms.r:= cp_No_touch;
+        perms.w:= cp_No_touch;
 
-        case h_type of
-            'keyvalue': aHive:= add_hash_hive(h_name, perms);
-            'list'    : aHive:= add_list_hive(h_name, perms);
-            else
-                raise eHive_error.Create('Undefined hive class: ' + h_type);
+        for y:= 0 to length(props)-1 do
+        begin
+            case props[y].key of
+                'name'       : h_name := props[y].value;
+                'class'      : h_class:= props[y].value;
+                'permissions': perms  := str2perms(props[y].value);
+            end
         end;
+
+        aHive := add_hive(h_name, h_class, perms);
 
         buffer:= file2string(ConcatPaths([path, h_name + '.hive']));
 
@@ -217,9 +321,9 @@ begin
 end;
 
 procedure kHive_cluster.save(path: string);
-var z     : dWord;
-    buffer: string = '';
-    h_type: string;
+var z      : dWord;
+    buffer : string = '';
+    h_class: string;
 begin
   { Write out any modified hives }
     for z:= 0 to Count - 1 do
@@ -231,10 +335,12 @@ begin
         for z:= 0 to Count - 1 do
         begin
             case items[z].ClassName of
-                'kHash_hive'      : h_type:= 'keyvalue';
-                'kStringList_hive': h_type:= 'list';
+                'kKeyVal_hive': h_class:= 'keyvalue';
+                'kList_hive'  : h_class:= 'list'
             end;
-            buffer+= tank(kHive_ancestor(items[z]).Name + ':' + h_type, []);
+            buffer+= tank(keyvalue2tanks('name', kHive_ancestor(items[z]).Name)
+                        + keyvalue2tanks('class', h_class)
+                        + keyvalue2tanks('permissions', kHive_ancestor(items[z]).Permissions), []);
         end;
 
         string2File(ConcatPaths([path, 'root.hive']), tank(buffer, [so_sha1]));
@@ -243,29 +349,48 @@ begin
 end;
 
 
-{ kStringList_hive }
+{ kList_hive }
 
-procedure kStringList_hive.from_stream(aStream: string);
+procedure kList_hive.from_stream(aStream: string);
+var z         : integer = 1;
 begin
-    if content = nil then
-        content:= tStringList.Create;
     content.Clear;
-    content.AddStrings(detank2list(detank(aStream)));
 
-    Exclude(cell_properties, cellProp_dirty);
+    content.AddStrings(detank2list(detank(aStream, z)));
+
+    Exclude(cell_properties, cellProp_dirty)
 end;
 
-function kStringList_hive.to_stream: string;
+constructor kList_hive.Create(HashObjectList: TFPHashObjectList;
+    const s: shortstring);
+begin
+    inherited;
+    content:= tStringList.Create;
+    content.Sorted    := true;      // Both of these should be optional
+    content.Duplicates:= dupIgnore; // properties but I don't care at the moment
+end;
+
+procedure kList_hive.to_console;
+var z: integer = 0;
+begin
+    writeln('==== HIVE DUMP ==== (', Name, '; list)');
+    writeln('Permissions: ', Permissions);
+    for z:= 0 to content.Count - 1 do
+        writeln(#9, content.Strings[z]);
+    writeln('==== END ==== (', Name, '; ', content.count, ' cells)')
+end;
+
+function kList_hive.to_stream: string;
 var z     : integer;
-    buffer: string;
+    buffer: string = '';
 begin
     for z:= 0 to content.count - 1 do
         buffer+= tank(content.Strings[z], []);
 
-    result:= tank(buffer, [so_md5])
+    result:= tank(buffer, [so_sha1])
 end;
 
-function kStringList_hive.getItem(index: string): string;
+function kList_hive.getItem(index: string): string;
 var z: integer;
 begin
     if string_is_numeric(index) then begin
@@ -277,7 +402,7 @@ begin
         result:= ''
 end;
 
-procedure kStringList_hive.setItem(index: string; aValue: string);
+procedure kList_hive.setItem(index: string; aValue: string);
 var z: integer;
 begin
     Include(cell_properties, cellProp_dirty);
@@ -292,7 +417,7 @@ begin
         content.Append(aValue)
 end;
 
-procedure kStringList_hive.add(index: string; aValue: string);
+procedure kList_hive.add(index: string; aValue: string);
 begin
     Include(cell_properties, cellProp_dirty);
     if (index <> '') and string_is_numeric(index) then
@@ -301,93 +426,108 @@ begin
         content.Add(aValue)
 end;
 
-procedure kStringList_hive.del(index: string);
+procedure kList_hive.del(index: string);
 begin
     Include(cell_properties, cellProp_dirty);
     if string_is_numeric(index) then
         content.Delete(strToInt(index))
 end;
 
-function kStringList_hive.getCount: integer;
+function kList_hive.getCount: integer;
 begin
     result:= content.Count
 end;
 
-function kStringList_hive.getRandom: string;
+function kList_hive.getRandom: string;
 begin
     result:= content.Strings[Random(content.Count)]
 end;
 
-{ kHash_hive }
+{ kKeyVal_hive }
 
-procedure kHash_hive.from_stream(aStream: string);
-var z    : integer;
-    y    : integer;
-    itemz: tStringList;
-    item : string;
-    key,
-    value: string;
-
+procedure kKeyVal_hive.from_stream(aStream: string);
+var z     : integer = 1;
+    keyval: kKeyValue;
+    b     : string;
 begin
-    itemz:= detank2list(detank(aStream));
+    b:= detank(aStream);
 
-    if itemz.Count > 0 then begin
-        for z:= 0 to itemz.count - 1 do begin
-            item := itemz[z];
-            y    := Pos(#30, item);
-            key  := item[1..y-1];
-            value:= item[y+1..length(item)];
-            content.Add(key, value)
-        end
+    while z < length(b) do begin
+        keyval:= tank2keyvalue(b, z);
+        content.add(keyval.key, keyval.value)
     end;
-    Exclude(cell_properties, cellProp_dirty);
+
+    Exclude(cell_properties, cellProp_dirty)
 end;
 
-function kHash_hive.to_stream: string;
+constructor kKeyVal_hive.Create(HashObjectList: TFPHashObjectList;
+    const s: shortstring);
+begin
+    inherited;
+    content:= TFPStringHashTable.Create
+end;
+
+function kKeyVal_hive.to_stream: string;
 begin
     buffer:= '';
     content.Iterate(@iteratee);
     result:= tank(buffer, [so_sha1])
 end;
 
-procedure kHash_hive.iteratee(Item: String; const Key: string; var Continue: Boolean);
+procedure kKeyVal_hive.iteratee(Item: String; const Key: string; var Continue: Boolean);
 begin
-    buffer  += tank(key + #30 + item, []);
+    buffer  += keyvalue2tanks(key, item);
     Continue:= true
 end;
 
-function kHash_hive.getItem(index: string): string;
+procedure kKeyVal_hive.dump_iteratee(Item: String; const Key: string; var Continue: Boolean);
+begin
+    writeln(#9'KEY: ', key, #9'VALUE: ', Item);
+    Continue:= true
+end;
+
+function kKeyVal_hive.getItem(index: string): string;
 begin
     result:= content.Items[index]
 end;
 
-procedure kHash_hive.setItem(index: string; aValue: string);
+procedure kKeyVal_hive.setItem(index: string; aValue: string);
 begin
     Include(cell_properties, cellProp_dirty);
     content.Items[index]:= aValue
 end;
 
-procedure kHash_hive.add(index: string; aValue: string);
+procedure kKeyVal_hive.add(index: string; aValue: string);
 begin
     Include(cell_properties, cellProp_dirty);
     content.Add(index, aValue)
 end;
 
-procedure kHash_hive.del(index: string);
+procedure kKeyVal_hive.del(index: string);
 begin
     Include(cell_properties, cellProp_dirty);
     content.Delete(index)
 end;
 
-function kHash_hive.getCount: integer;
+function kKeyVal_hive.getCount: integer;
 begin
     result:= content.Count
 end;
 
-function kHash_hive.getRandom: string;
+function kKeyVal_hive.getRandom: string;
 begin
-    { Not sure how to implement this. Could set up an iterator but there's
-      gotta be a less stupid way to do it. }
+    { Not sure how to implement this. Could set up an iterator callback but
+      there's gotta be a less slow and stupid way to do it. }
+//    result:= (content.HashTable.Items[random(count)]);
+    result:= ''
+end;
+
+procedure kKeyVal_hive.to_console;
+begin
+    writeln('==== HIVE DUMP ==== (', Name, '; keyval)');
+    writeln('Permissions: ', Permissions);
+    content.Iterate(@dump_iteratee);
+    writeln('==== END ==== (', Name, '; ', content.count, ' cells)')
 end;
 
 end.
