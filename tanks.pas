@@ -148,7 +148,9 @@ begin
                 raise EStreamError.Create('The stream lied about its size: Expected '
                                          +intToStr(expected_length)
                                          +' bytes but it was actually '
-                                         +intToStr(l - z));
+                                         +intToStr(l - z)
+                                         +#10'Buffer: ' + buffer
+                                         +#10'Offset: ' + intToStr(offset));
         end else
             raise EStreamError.Create(e_missing + 'length indicator: ' + buffer[z-1..z+1]);
 
