@@ -49,8 +49,8 @@ type
 
         function    getCount   : integer;virtual;abstract;
       protected
-        function    getItem    (index: string): string;virtual;abstract;
-        procedure   setItem    (index: string; aValue: string);virtual;abstract;
+        function    kGetItem   (index: string): string;virtual;abstract;
+        procedure   kSetItem   (index: string; aValue: string);virtual;abstract;
         function    getRandom  : string;virtual;abstract;
         procedure   setPerms   (permissions: string);
         function    getPerms   : string;
@@ -63,7 +63,7 @@ type
         procedure   from_stream(aStream: string);virtual;abstract;
         procedure   to_console;virtual;abstract;
       public
-        property    items[index: string]: string read getItem write setItem; default;
+        property    items[index: string]: string read kGetItem write kSetItem; default;
         property    count      : integer read getCount;
         property    Permissions: string read getPerms write setPerms;
     end;
@@ -73,8 +73,8 @@ type
     kKeyVal_hive = class(kHive_ancestor)
         content: TFPStringHashTable;
 
-        function    getItem    (index: string): string;override;
-        procedure   setItem    (index: string; aValue: string);override;
+        function    kGetItem   (index: string): string;override;
+        procedure   kSetItem   (index: string; aValue: string);override;
 
         procedure   add        (index: string; aValue: string);override;
         procedure   del        (index: string);override;
@@ -100,8 +100,8 @@ type
     kList_hive = class(kHive_ancestor)
         content: tStringList;
 
-        function    getItem    (index: string): string;override;
-        procedure   setItem    (index: string; aValue: string);override;
+        function    kGetItem   (index: string): string;override;
+        procedure   kSetItem   (index: string; aValue: string);override;
 
         procedure   add        (index: string; aValue: string);override;
         procedure   del        (index: string);override;
@@ -355,14 +355,18 @@ begin
     if dirty then begin
         for z:= 0 to Count - 1 do
         begin
-            case items[z].ClassName of
-                'kKeyVal_hive': h_class:= 'keyvalue';
-                'kList_hive'  : h_class:= 'list'
+//            if kHive_ancestor(items[z]).count > 0 then
+//            begin
+                writeln('[[' + intToStr(kHive_ancestor(items[z]).count));
+                case items[z].ClassName of
+                    'kKeyVal_hive': h_class:= 'keyvalue';
+                    'kList_hive'  : h_class:= 'list'
+                end;
+                buffer+= tank(keyvalue2tanks('name', kHive_ancestor(items[z]).Name)
+                            + keyvalue2tanks('class', h_class)
+                            + keyvalue2tanks('permissions', kHive_ancestor(items[z]).Permissions), []);
             end;
-            buffer+= tank(keyvalue2tanks('name', kHive_ancestor(items[z]).Name)
-                        + keyvalue2tanks('class', h_class)
-                        + keyvalue2tanks('permissions', kHive_ancestor(items[z]).Permissions), []);
-        end;
+//        end;
 
         string2File(ConcatPaths([path, 'root.hive']), tank(buffer, [so_sha1]));
         dirty:= false
@@ -448,6 +452,7 @@ var kv   : kKeyValue;
 begin
     lastError:= '';
     kv       := resolve_path(index);
+
     if kv.key = '' then
     begin
         lastError:= c_ref + 'hive name';
@@ -459,9 +464,10 @@ begin
         exit
     end;
 
+writeln('hive: ', kv.key, #9'cell: ', kv.value, #9'permission: ', permission, #9'aValue: ', aValue);
     aHive := kHive_ancestor(Find(kv.key));
     if aHive <> nil then begin
-        if str2perm(permission) <= str2perms(aHive.Permissions).r then
+        if str2perm(permission) <= str2perms(aHive.Permissions).w then
             aHive.items[kv.value]:= aValue
         else
             lastError:= 'You require additional permissions for ' + index;
@@ -486,11 +492,14 @@ end;
 procedure kList_hive.from_stream(aStream: string);
 var z         : integer = 1;
 begin
-    content.Clear;
+    if aStream <> '' then begin
+        content.Clear;
 
-    content.AddStrings(detank2list(detank(aStream, z)));
+        content.AddStrings(detank2list(detank(aStream, z)));
 
-    Exclude(cell_properties, cellProp_dirty)
+        Exclude(cell_properties, cellProp_dirty)
+    end else
+        writeln(stdErr, 'Empty hive stream; not loading');
 end;
 
 constructor kList_hive.Create(HashObjectList: TFPHashObjectList;
@@ -522,7 +531,7 @@ begin
     result:= tank(buffer, [so_sha1])
 end;
 
-function kList_hive.getItem(index: string): string;
+function kList_hive.kGetItem(index: string): string;
 var z: integer;
 begin
     if string_is_numeric(index) then begin
@@ -534,16 +543,16 @@ begin
         result:= ''
 end;
 
-procedure kList_hive.setItem(index: string; aValue: string);
+procedure kList_hive.kSetItem(index: string; aValue: string);
 var z: integer;
 begin
     Include(cell_properties, cellProp_dirty);
     if string_is_numeric(index) then begin
         z:= strToInt(index);
-        if z < content.Count then
+        if (z < content.Count) and (z >= 0) then
             content.strings[z]:= aValue
         else
-            content.Append(aValue)
+            content.Add(aValue)
     end
     else
         content.Append(aValue)
@@ -582,14 +591,18 @@ var z     : integer = 1;
     keyval: kKeyValue;
     b     : string;
 begin
-    b:= detank(aStream);
+    if aStream <> '' then begin
+        b:= detank(aStream);
 
-    while z < length(b) do begin
-        keyval:= tank2keyvalue(b, z);
-        content.add(keyval.key, keyval.value)
-    end;
+        while z < length(b) do begin
+            keyval:= tank2keyvalue(b, z);
+            content.add(keyval.key, keyval.value)
+        end;
 
-    Exclude(cell_properties, cellProp_dirty)
+        Exclude(cell_properties, cellProp_dirty)
+    end
+    else
+        writeln(stdErr, 'Empty hive stream; not loading')
 end;
 
 constructor kKeyVal_hive.Create(HashObjectList: TFPHashObjectList;
@@ -618,13 +631,14 @@ begin
     Continue:= true
 end;
 
-function kKeyVal_hive.getItem(index: string): string;
+function kKeyVal_hive.kGetItem(index: string): string;
 begin
     result:= content.Items[index]
 end;
 
-procedure kKeyVal_hive.setItem(index: string; aValue: string);
+procedure kKeyVal_hive.kSetItem(index: string; aValue: string);
 begin
+    writeln('\\'#9'index: ', index, ' aValue: ', aValue);
     Include(cell_properties, cellProp_dirty);
     content.Items[index]:= aValue
 end;
