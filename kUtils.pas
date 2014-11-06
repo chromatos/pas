@@ -11,8 +11,14 @@ interface
 uses classes, sysUtils;
 
 type
-    kStrings = array of string;
-    kCharSet = set of char;
+    kKeyValue = record
+        key,
+        value: string;
+    end;
+
+    kStrings   = array of string;
+    kKeyValues = array of kKeyValue;
+    kCharSet   = set of char;
 
 function  splitByType         (yourString: string; skipWhiteSpace: boolean = true;
                                alphaNum: boolean = true): tStringList;
@@ -51,6 +57,12 @@ function  reverse             (buffer: string): string;
 function  file2string         (fileName: string): string;
 procedure string2File         (filename, buffer: string; append: boolean = false);
 
+function  string2KeyValue     (buffer: string): kKeyValue;
+function  keyValue2String     (kv: kKeyValue): string;
+
+function  string2KeyValues    (buffer: string):kKeyValues ;
+function  keyValues2String    (keyvalues: kKeyValues): string;
+
 implementation
 uses strutils;
 
@@ -59,7 +71,8 @@ uses strutils;
 function file2string(fileName: string): string;
 var x: TFileStream;
 begin
-    if FileExists(fileName) then begin
+    if FileExists(fileName) then
+    begin
         x:= TFileStream.Create(fileName, fmOpenRead);
         setLength(result, x.Size);
         x.Read(result[1], x.Size);
@@ -71,11 +84,14 @@ end;
 procedure string2File(filename, buffer: string; append: boolean = false);
 var x: tFileStream;
 begin
-    if FileExists(filename) then begin
+    if FileExists(filename) then
+    begin
         if append then
             x:= TFileStream.create(fileName, fmAppend)
-        else
-            x:= TFileStream.create(fileName, fmOpenWrite)
+        else begin
+            x     := TFileStream.create(fileName, fmOpenWrite);
+            x.Size:= 0
+        end
     end
     else
         x:= TFileStream.create(fileName, fmCreate);
@@ -84,11 +100,13 @@ begin
     x.Free
 end;
 
+
 function count_delimiters(delimiter: char; yourString: string): dWord;
 var z: dWord = 0;
 begin
     result:= 0;
-    while z < length(yourString) do begin
+    while z < length(yourString) do
+    begin
         inc(z);
         if yourString[z] = delimiter then
             inc(result)
@@ -111,7 +129,8 @@ function stripSomeControls(buffer: string): string;
 var z: dWord = 1;
     y: dWord = 1;
 begin
-    if buffer <> '' then begin
+    if buffer <> '' then
+    begin
         setLength(result, length(buffer));
         for z:= 1 to length(buffer) do
             if not(buffer[z] in [#9..#13]) then
@@ -127,8 +146,10 @@ function strip_set(theSet: kCharSet; buffer: string): string;
 var z: dWord = 1;
     y: dWord;
 begin
-    while z < length(buffer) do begin
-        if buffer[z] in theSet then begin
+    while z < length(buffer) do
+    begin
+        if buffer[z] in theSet then
+        begin
             y:= z;
             while (buffer[z] in theSet) and (z < length(buffer)) do
                 inc(z);
@@ -148,10 +169,12 @@ function extract_subStr(buffer: string; var position: integer; subString: string
 var z: integer;
 begin
     z:= PosEx(subString, buffer, position);
-    if z > position then begin
+    if z > position then
+    begin
         result  := buffer[position..z-1];
         position:= z + length(subString)
-    end else begin
+    end else
+    begin
         result  := buffer[position..length(buffer)];
         position:= length(buffer)
     end
@@ -166,7 +189,8 @@ var a, b: string;
 begin
     find_word:= 0;
 
-    if caseSensitive then begin
+    if caseSensitive then
+    begin
         a:= yourWord;
         b:= buffer
     end else
@@ -176,7 +200,8 @@ begin
     end;
 
     z:= 1;
-    while z < length(b) do begin
+    while z < length(b) do
+    begin
         while (b[z] <> a[1]) and (z < length(b)) do
             inc(z);
 {       Nested IFs may be more optimal; the Interwebz says this could be
@@ -187,7 +212,8 @@ begin
                  and((z+length(a) = length(b)+1)
                     or(not(b[z+length(a)] in ['0'..'9','A'..'Z','a'..'z']))
                  ))
-            then begin
+            then
+            begin
                 find_word:= z;
                 exit
             end;
@@ -253,7 +279,8 @@ var z: dWord = 0;
 begin
     result:= 0;
 
-    if caseSensitive then begin
+    if caseSensitive then
+    begin
         while z < subStrings.Count do
         begin
             if pos(subStrings.Strings[z], buffer) > 0 then
@@ -297,11 +324,13 @@ var z: dWord = 1;
     y: dWord;
 begin
     result:= '';
-    while z < length(buffer) do begin
+    while z < length(buffer) do
+    begin
         y:= z;
         while (not(buffer[z] in [#9, #10, #13, ' '])) and (z < length(buffer)) do
             inc(z);
-        if (buffer[z] in [#9, #10, #13, ' ']) then begin
+        if (buffer[z] in [#9, #10, #13, ' ']) then
+        begin
             result+= buffer[y..z-1] + ' ';
             while (buffer[z] in [#9, #10, #13, ' ']) and (z < length(buffer)) do
                 inc(z)
@@ -331,7 +360,8 @@ begin
         z:= 1;
 
     if z > 0 then begin
-        if to_what <> '' then begin
+        if to_what <> '' then
+        begin
             y:= PosEx(to_what, buffer, z + length(from_what));
             if y = 0 then
                 y:= length(buffer);
@@ -353,16 +383,20 @@ begin
     y     := 1;
     setLength(result, 64);
 
-    while z <= length(yourString) do begin
+    while z <= length(yourString) do
+    begin
         inc(z);
         if yourString[z] in [delimiter] then inc(y)
     end;
-    if y > 1 then begin
+    if y > 1 then
+    begin
         z:= 0;
         y:= 1;
-    while z <= length(yourString) do begin
+    while z <= length(yourString) do
+    begin
         inc(z);
-            if yourString[z] in [delimiter] then begin
+            if yourString[z] in [delimiter] then
+            begin
                 if length(result) = aIndex then setLength(result, aIndex+8);
                 result[aIndex]:= yourString[y..z-1];
                 inc(aIndex);
@@ -384,18 +418,22 @@ begin
     z:= 0;
     y:= 1;
 
-    while z <= length(yourString) do begin
+    while z <= length(yourString) do
+    begin
         inc(z);
         if yourString[z] in [delimiter] then inc(y)
     end;
-    if y > 1 then begin
+    if y > 1 then
+    begin
         if split = nil then
             split:= tStringList.Create;
         z:= 0;
         y:= 1;
-    while z <= length(yourString) do begin
+    while z <= length(yourString) do
+    begin
         inc(z);
-            if yourString[z] in [delimiter] then begin
+            if yourString[z] in [delimiter] then
+            begin
                 split.Append(yourString[y..z-1]);
                 inc(z);
                 y:= z
@@ -427,11 +465,13 @@ begin
     z:= 1;
     splitByType:= tStringList.Create;
 
-    if alphaNum then begin
+    if alphaNum then
+    begin
         Numbers:= Numbers + Letters;
         Letters:= Numbers
     end;
-    while (z < length(yourString)) do begin
+    while (z < length(yourString)) do
+    begin
         case yourString[z] of
             '0'..'1'         : charType:= numbers;
             'A'..'Z','a'..'z': charType:= letters;
@@ -441,7 +481,8 @@ begin
             else
                 herp:= true;
         end;
-        if not herp then begin
+        if not herp then
+        begin
             y:= z;
             while (yourString[z] in charType) and (z <= length(yourString)) do
                 inc(z);
@@ -450,7 +491,8 @@ begin
 
             splitByType.Append(yourString[y..z-1]);
             inc(x)
-        end else begin
+        end else
+        begin
             inc(z);
             herp:= false
         end
@@ -471,8 +513,46 @@ begin
     split_by_sequence.Append(buffer[z..length(buffer)])
 end;
 
+function string2KeyValue(buffer: string): kKeyValue;
+var z: integer;
+begin
+    z:= pos(':', buffer);
+    if (z > 1) and (z < length(buffer)) then begin
+        result.key  := buffer[1..z-1];
+        result.value:= buffer[z+1..length(buffer)]
+    end
+end;
+
+function keyValue2String(kv: kKeyValue): string;
+begin
+    result:= kv.key + ':' + kv.value
+end;
+
+function string2KeyValues(buffer: string): kKeyValues;
+var z: integer = 0;
+    x: kStrings;
+begin
+    x:= split2array(';', buffer);
+    setLength(result, length(x));
+    for z:= 0 to high(x) do
+        result[z]:= string2KeyValue(x[z])
+end;
+
 
 { String joining }
+
+function keyValues2String(keyvalues: kKeyValues): string;
+var z: integer = 0;
+    l: integer;
+begin
+    l:= high(keyvalues);
+    if l > 0 then
+    begin
+        for z:= 0 to l do
+            result+= keyValue2String(keyvalues[z]) + ';';
+        setLength(result, length(result)-1) // hehe
+    end
+end;
 
 function join_stringList(delimiter: char; stringList: tStringList): string;
 { This is similar to using stringList.DelimitedText but we append, otherwise we
@@ -498,15 +578,17 @@ begin
     z     := 0;
     y     := 1;
 
-    if length(yourString) > 1 then begin
-        if wordsList = nil then
-            wordsList:= tStringList.create;
-        z:= 0;
-        y:= 1;
-        while z <= length(yourString) do begin
+    if length(yourString) > 1 then
+    begin
+        result:= tStringList.create;
+        z     := 0;
+        y     := 1;
+        while z <= length(yourString) do
+        begin
             inc(z);
-            if not(yourString[z] in allowables) then begin
-                wordsList.Append(yourString[y..z-1]);
+            if not(yourString[z] in allowables) then
+            begin
+                result.Append(yourString[y..z-1]);
                 while (z< length(yourString)) and (not(yourString[z] in allowables)) do
                     inc(z);
 
