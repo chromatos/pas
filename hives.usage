@@ -1,0 +1,44 @@
+You also need the tanks and kUtils units, but don't have to put them in your uses clause.
+
+kHive_cluster is the main class to use and everything can be accessed through it.
+
+Methods
+    .load() takes a directory; file names are handled automatically.
+    .save() also takes a directory. Call periodically to save only modified hives.
+
+Properties
+    content  provides string-keyed access to the entire hive cluster.
+             Pass in a 'path' to the keyed value you want, along with the permission level
+             (you have to decide what the permission level should be, depending on where
+              the request is coming from). 
+             For example:
+                 content['config/server', 'none'] 
+             will return the content of the "server" node within the "config" hive.
+             Non-existant content returns empty strings and sets the string LastError, so
+             be sure to check for that.
+
+Permissions at the moment are: 'none'     for internal bot usage (like nickser passwords 
+                                                                  and stuff)
+                               'some'     for bot controllers only
+                               'everyone' for anyone to access
+
+Example code:
+
+program hive_example
+{mode objfpc}{$H+}
+
+uses classes, hives;
+
+var storage: kHive_cluster;
+begin
+    storage:= kHive_cluster.Create(true);
+    storage.add_hive('config', 'r:none;w:none');
+
+    storage.content['config/server', 'none']:= 'irc.soylentnews.org';
+    storage.content['config/password', 'none']:= 'hunter2';
+
+    storage.save('/tmp/blerg');
+
+    irc.say(channel, storage.content['content/password', 'everyone']); // returns nothing
+    irc.say(channel, storage.lastError); // indicates lack of permission
+end.
