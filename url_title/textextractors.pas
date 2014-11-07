@@ -16,7 +16,7 @@ unit textExtractors;
 interface
 
 uses
-    Classes, SysUtils;
+    Classes, SysUtils, tanks;
 
 
 type
@@ -32,28 +32,40 @@ type
                           flags: kSiteFlags;
                       end;
 
+    kpageInfo       = record
+        url,
+        title,
+        description : string;
+        refreshed,
+        last_emitted: TDate;
+        redirects   : word;
+    end;
+
     tColor          = (clNone, clBlack, clBlue, clGreen, clRed, clBrown, clMagenta, clOrange, clYellow, clLtGreen, clCyan, clLtCyan, clLtBlue,clLtMagenta,clLtGray,clGray,clWhite);
 
-function getSoylentComment   (buffer: string; flags: kSiteFlags): string;
-function getSoylentArticle   (buffer: string; flags: kSiteFlags): string;
-function getSoylentPoll      (buffer: string; flags: kSiteFlags): string;
-function getSoylentSubmission(buffer: string; flags: kSiteFlags): string;
+procedure getSoylentComment   (buffer: string; flags: kSiteFlags; var info: kpageInfo);
+procedure getSoylentArticle   (buffer: string; flags: kSiteFlags; var info: kpageInfo);
+procedure getSoylentPoll      (buffer: string; flags: kSiteFlags; var info: kpageInfo);
+procedure getSoylentSubmission(buffer: string; flags: kSiteFlags; var info: kpageInfo);
 
-function getPipedotArticle   (buffer: string; flags: kSiteFlags): string;
-function getPipedotComment   (buffer: string; flags: kSiteFlags): string;
+procedure getPipedotArticle   (buffer: string; flags: kSiteFlags; var info: kpageInfo);
+procedure getPipedotComment   (buffer: string; flags: kSiteFlags; var info: kpageInfo);
 
-function getWikiTextia       (buffer: string; anchor: string): string;
-function getYouTubeDiz       (buffer: string): string;
+procedure getWikiTextia       (buffer: string; anchor: string; var info: kpageInfo);
+procedure getYouTubeDiz       (buffer: string; var info: kpageInfo);
 
+procedure getExcerpt          (buffer: string; size: dWord; var info: kpageInfo);
+procedure getXMLtitle         (buffer: string; var info: kpageInfo);
 
-function getExcerpt          (buffer: string; size: dWord): string;
-function getXMLtitle         (buffer: string): string;
-function stripHTML           (buffer: string): string;
-function stripBlockQuotes    (buffer: string): string;
+function stripHTML            (buffer: string): string;
+function stripBlockQuotes     (buffer: string): string;
 
-function detectSite          (url: string): kSite;
+function detectSite           (url: string): kSite;
 
-function mIRCcolor           (color: tColor): string;
+function mIRCcolor            (color: tColor): string;
+
+function tank2pageInfo        (buffer: string): kpageInfo;
+function pageInfo2tank        (page: kpageInfo): string;
 
 implementation
 uses strutils, kUtils, urlStuff;
@@ -94,6 +106,30 @@ begin
         clGray     : result:= #3'14';
         clLtGray   : result:= #3'15'
     end
+end;
+
+function tank2pageInfo(buffer: string): kpageInfo;
+var z: integer;
+    y: kKeyValues;
+begin
+    y:= tanks2keyvalues(buffer);
+    for z:= 0 to high(y) do
+        case y[z].key of
+            'title'    : result.title       := y[z].value;
+            'diz'      : result.description := y[z].value;
+            'refreshed': result.refreshed   := StrToDateTime(y[z].value);
+            'spoken'   : result.last_emitted:= StrToDateTime(y[z].value);
+            'redirects': result.redirects   := StrToInt(y[z].value)
+        end
+end;
+
+function pageInfo2tank(page: kpageInfo): string;
+begin
+    result:= keyvalue2tanks('title', page.title)
+           + keyvalue2tanks('diz', page.description)
+           + keyvalue2tanks('refreshed', DateTimeToStr(page.refreshed))
+           + keyvalue2tanks('spoken', DateTimeToStr(page.last_emitted))
+           + keyvalue2tanks('redirects', IntToStr(page.redirects));
 end;
 
 function detectSite(url: string): kSite;
@@ -143,26 +179,26 @@ begin
     else result.site:= siWhatever
 end;
 
-function getExcerpt(buffer: string; size: dWord): string;
+procedure getExcerpt(buffer: string; size: dWord; var info: kpageInfo);
 { This is for text files or whatever. Might fancy it up later. }
 var z: dWord = 0;
     l: dWord;
 begin
     l:= length(buffer);
+    info.title:='Text';
     while (byte(buffer[z]) < 33) and (z < l) do
         inc(z);
     if (z + size) < l then
-        result:= buffer[z..z+size]
-    else result:= buffer[z..l]
+        info.description:= buffer[z..z+size]
+    else info.description:= buffer[z..l]
 end;
 
 { and of course, these should be split into includes; oh well }
 
-function getSoylentArticle(buffer: string; flags: kSiteFlags): string;
-var z      : integer = 0;
-    y      : integer = 0;
-    title,
-    summary: string;
+procedure getSoylentArticle(buffer: string; flags: kSiteFlags; var info: kpageInfo);
+var z    : integer = 0;
+    y    : integer = 0;
+    title: string;
 
 begin
 { Title }
@@ -189,25 +225,24 @@ begin
     extract_subStr(buffer, z, 'div class="intro"');
     z:= PosEx('>', buffer, z) + 1;
 
-    summary:= clip_text(cleanHTMLForIRC(extract_subStr(buffer, z, '</div')), 180);
+    info.description:= clip_text(cleanHTMLForIRC(extract_subStr(buffer, z, '</div')), 180);
 
     if (TextPos('close', title) = 1) or (TextPos('error', title) = 1) or (TextPos('log in', title) = 1) then
         if TextPos(nothing_error, buffer) > 0 then begin
-            result:= iCant();
+            info.title:= iCant();
             exit
         end;
 
-    result:= mIRCcolor(clRed) + 'SN ';
-    if sfDev     in flags then result+= '(dev) ';
-    if sfTMBDev  in flags then result+= '(TMB dev) ';
-    if sfJournal in flags then result+= 'journal '
-    else result+= 'article ';
+    info.title:= 'SN ';
+    if sfDev     in flags then info.title+= '(dev) ';
+    if sfTMBDev  in flags then info.title+= '(TMB dev) ';
+    if sfJournal in flags then info.title+= 'journal '
+    else info.title+= 'article ';
 
-
-    result+= reduce_white_space(mIRCcolor(clGreen) + title + mIRCcolor(clNone));// + ': ' + summary);
+    info.title+= reduce_white_space(title)
 end;
 
-function getSoylentSubmission(buffer: string; flags: kSiteFlags): string;
+procedure getSoylentSubmission(buffer: string; flags: kSiteFlags; var info: kpageInfo);
 var z      : integer = 0;
     title,
     summary: string;
@@ -217,62 +252,58 @@ begin
     z:= PosEx('<div class="article">', buffer, 1);
     if z < 1 then begin
         z:= PosEx('<div id="journal', buffer, 1);
-        if z < 1 then begin
-            result:= '';
-            exit
-        end
+        if z < 1 then
+            exit;
     end;
 
-    z      := PosEx('<h3', buffer, z);
-    z      := PosEx('>', buffer, z) + 1;
+    z:= PosEx('<h3', buffer, z);
+    z:= PosEx('>', buffer, z) + 1;
 
-    title  += cleanHTMLForIRC(extract_subStr(buffer, z, '</h3'));
+    title:= cleanHTMLForIRC(extract_subStr(buffer, z, '</h3'));
 
   { Submitter }
-    z      := PosEx('<div class="det', buffer, z);
-    z      := PosEx('<b', buffer, z);
-    z      := PosEx('>', buffer, z) + 1;
+    z:= PosEx('<div class="det', buffer, z);
+    z:= PosEx('<b', buffer, z);
+    z:= PosEx('>', buffer, z) + 1;
 
-    who    := trim(resolveXMLents(stripHTML(extract_subStr(buffer, z, '</b'))));
+    who:= trim(resolveXMLents(stripHTML(extract_subStr(buffer, z, '</b'))));
 
 
     { Summary }
 
-    z      := PosEx('<p class="byline">', buffer, z);
-    z      := PosEx('writes', buffer, z);
-    z      := PosEx(':', buffer, z) + 1;
+    z:= PosEx('<p class="byline">', buffer, z);
+    z:= PosEx('writes', buffer, z);
+    z:= PosEx(':', buffer, z) + 1;
 
-    summary:= clip_text(cleanHTMLForIRC(extract_subStr(buffer, z, '</div')), 180);
+    info.description:= cleanHTMLForIRC(extract_subStr(buffer, z, '</div'));
 
     if (TextPos('close', title) = 1) or (TextPos('error', title) = 1) or (TextPos('log in', title) = 1) then
         if TextPos(nothing_error, buffer) > 0 then begin
-            result:= iCant();
+            info.title:= iCant();
             exit
         end;
 
-    result := mIRCcolor(clRed) + 'SN ';
-    if sfDev    in flags then result+= '(dev) ';
-    if sfTMBDev in flags then result+= '(TMB dev) ';
+    info.title:= mIRCcolor(clRed) + 'SN ';
+    if sfDev    in flags then info.title+= '(dev) ';
+    if sfTMBDev in flags then info.title+= '(TMB dev) ';
 
-    result += 'Submission by ' + who + ' ' + mIRCcolor(clGreen) + title + mIRCcolor(clNone);// + ': ' + summary;
-    result := reduce_white_space(result)
+    info.title+= reduce_white_space('Submission by ' + who + ' ' + title)
 end;
 
 
-function getWikiTextia(buffer: string; anchor: string): string;
+procedure getWikiTextia(buffer: string; anchor: string; var info: kpageInfo);
 var z      : integer = 0;
-    title,
-    summary: string;
 begin
+    info.title:= 'Wiki: ';
     z:= PosEx('id="firstHeading"', buffer, 1);
     if z < 1 then
         z:= PosEx('id="section_0"', buffer, z);
     if z > 1 then begin
         z:= PosEx('>', buffer, z) + 1;
 
-        title:= clip_text(cleanHTMLForIRC(extract_subStr(buffer, z, '</h1')), 69)
+        info.title+= cleanHTMLForIRC(extract_subStr(buffer, z, '</h1'))
     end else
-        title:= getXMLtitle(buffer);
+        getXMLtitle(buffer, info);
 
     if anchor = '' then begin
         z:= PosEx('mw-content-text', buffer, z);
@@ -284,13 +315,11 @@ begin
             z:= PosEx('>', buffer, z) + 1;
         end
     end;
-//    inc(z);
-    summary:= clip_text(reduce_white_space(cleanHTMLForIRC(extract_subStr(buffer, z, '</p'))), 420);
 
-    result := mIRCcolor(clRed) + 'Wiki: ' + mIRCcolor(clGreen) + title {+ ':'} + mIRCcolor(clNone);// + ' ' + summary
+    info.description:= reduce_white_space(cleanHTMLForIRC(extract_subStr(buffer, z, '</p')))
 end;
 
-function getYouTubeDiz(buffer: string): string;
+procedure getYouTubeDiz(buffer: string; var info: kpageInfo);
 var z: integer = 0;
     y: integer;
 begin
@@ -299,106 +328,100 @@ begin
     z:= PosEx('c', buffer, z);
     z:= PosEx('"', buffer, z) + 1;
 
-    result:= ExtractSubstr(buffer, z, ['"']);
+    info.title:= ExtractSubstr(buffer, z, ['"']);
 
     z:= PosEx('meta name="description"', buffer, z) + 1;
 
     z:= PosEx('c', buffer, z);
     z:= PosEx('"', buffer, z) + 1;
 
-    result+= ': ' + ExtractSubstr(buffer, z, ['"']);
-    result:= resolveXMLents(result)
+    info.title:= resolveXMLents(ExtractSubstr(buffer, z, ['"']))
 end;
 
-function getSoylentComment(buffer: string; flags: kSiteFlags): string;
+procedure getSoylentComment(buffer: string; flags: kSiteFlags; var info: kpageInfo);
 var z: integer = 0;
 
 begin
-    z         := pos('<div id="comment_top', buffer);
+    z:= pos('<div id="comment_top', buffer);
     if z > 0 then begin
       { Find the user name/id }
-        z     := PosEx('<div class="de', buffer, z);
-        z     := PosEx('by', buffer, z) + 2;
+        z:= PosEx('<div class="de', buffer, z);
+        z:= PosEx('by', buffer, z) + 2;
 
-        result:= mIRCcolor(clRed) + 'SN ';
-        if sfDev    in flags then result+= '(dev) ';
-        if sfTMBDev in flags then result+= '(TMB dev) ';
-        result+= 'comment by ' + trim(stripHTML(stripSomeControls(extract_subStr(buffer, z, '<span'))));// + ':' + mIRCcolor(clNone);
+        info.title:= 'SN ';
+        if sfDev    in flags then info.title+= '(dev) ';
+        if sfTMBDev in flags then info.title+= '(TMB dev) ';
+        info.title+= 'comment by ' + trim(stripHTML(stripSomeControls(extract_subStr(buffer, z, '<span'))));
       { Find the comment }
-{        z:= PosEx('<div id="comment_', buffer, z);
+        z:= PosEx('<div id="comment_', buffer, z);
         z:= PosEx('>', buffer, z) + 1;
 
-        result+= ' ' + clip_text(cleanHTMLForIRC(ExtractSubstr(buffer, z, '</div>')))), 180);
-}
-        result:= reduce_white_space(stripBlockQuotes(result))
-    end else
-        result:= ''
+        info.title:= reduce_white_space(stripBlockQuotes(cleanHTMLForIRC(extract_subStr(buffer, z, '</div>'))))
+    end
 end;
 
-function getSoylentPoll(buffer: string; flags: kSiteFlags): string;
+procedure getSoylentPoll(buffer: string; flags: kSiteFlags; var info: kpageInfo);
 var Z       : integer = 0;
     comments: string;
     title   : string;
     votes   : string;
 begin
   { Find the title }
-    z       := PosEx('<div id="pollBooth">', buffer, 1);
-    z       := PosEx('class="title"',buffer, z);
-    z       := PosEx('>', buffer, z) + 1;
+    z:= PosEx('<div id="pollBooth">', buffer, 1);
+    z:= PosEx('class="title"',buffer, z);
+    z:= PosEx('>', buffer, z) + 1;
 
-    title   := stripHTML(stripSomeControls(extract_subStr(buffer, z, '</div')));
+    title:= stripHTML(stripSomeControls(extract_subStr(buffer, z, '</div')));
 
     if (TextPos('close', title) = 1) or (TextPos('error', title) = 1) or (TextPos('log in', title) = 1) then
         if TextPos(nothing_error, buffer) > 0 then begin
-            result:= iCant();
+            info.title:= iCant();
             exit
         end;
 
   { Find the vote count, even though we're putting it before the horse—I mean title }
-    z       := PosEx('class="totalVotes"', buffer, z);
-    z       := PosEx('>', buffer, z) + 1;
+    z:= PosEx('class="totalVotes"', buffer, z);
+    z:= PosEx('>', buffer, z) + 1;
 
-    votes   := trim(extract_subStr(buffer, z, '</b'));
+    votes:= trim(extract_subStr(buffer, z, '</b'));
     if votes[length(votes)] = '.' then votes:= votes[1..length(votes)-1];
 
   { Find the comment count }
-    z       := PosEx('<select id="thresh', buffer, z);
-    z       := PosEx('-1', buffer, z);
-    z       := PosEx(':', buffer, z) + 2;
+    z:= PosEx('<select id="thresh', buffer, z);
+    z:= PosEx('-1', buffer, z);
+    z:= PosEx(':', buffer, z) + 2;
 
     comments:= ExtractSubstr(buffer, z, ['<']);
 
-    result  := mIRCcolor(clRed) + 'SN Poll ';
-    if sfDev    in flags then result+= '(dev) ';
-    if sfTMBDev in flags then result+= '(TMB dev) ';
+    info.title:= 'SN Poll ';
+    if sfDev    in flags then info.title+= '(dev)';
+    if sfTMBDev in flags then info.title+= '(TMB dev)';
 
-    result+= mIRCcolor(clNone) + ': ' + reduce_white_space(title + ' (' + comments + '; ' + votes + ')');
+    info.description:= reduce_white_space(title + ' (' + comments + '; ' + votes + ')');
 end;
 
-function getPipedotArticle(buffer: string; flags: kSiteFlags): string;
+procedure getPipedotArticle(buffer: string; flags: kSiteFlags; var info: kpageInfo);
 var z       : integer = 0;
     title,
     summary,
     comments: string;
 begin
-    z       := Pos('<article class="story', buffer);
-    z       := PosEx('>', buffer, z) + 1;
-    title   := resolveXMLents(stripHTML(stripSomeControls(extract_subStr(buffer, z, '</h1>'))));
-    z       := PosEx('<div', buffer, z);
-    z       := PosEx('>', buffer, z) + 1;
+    z    := Pos('<article class="story', buffer);
+    z    := PosEx('>', buffer, z) + 1;
+    title:= resolveXMLents(stripHTML(stripSomeControls(extract_subStr(buffer, z, '</h1>'))));
+    z    := PosEx('<div', buffer, z);
+    z    := PosEx('>', buffer, z) + 1;
 
-//    summary:= clip_text(cleanHTMLForIRC(ExtractSubstr(buffer, z, '</div')), 180);
+    info.description:= cleanHTMLForIRC(extract_subStr(buffer, z, '</div'));
 
-    z       := PosEx('<footer>', buffer, z);
-    z       := PosEx('<b>', buffer, z) + 3;
+    z:= PosEx('<footer>', buffer, z);
+    z:= PosEx('<b>', buffer, z) + 3;
 
-    comments:= stripSomeControls(extract_subStr(buffer, z, '</b>'));
-    result  := reduce_white_space(mIRCcolor(clBlue) + 'Pipedot Article: '
-             + mIRCcolor(clGreen) + title
-             + mIRCcolor(clBlue) + ' (' + comments + ' comments) ');// + mIRCcolor(clNone) + summary);
+    comments  := stripSomeControls(extract_subStr(buffer, z, '</b>'));
+    info.title:= reduce_white_space('Pipedot Article: ' + title + ' (' + comments + ' comments) ');
 end;
 
-function getPipedotComment(buffer: string; flags: kSiteFlags): string;
+procedure getPipedotComment(buffer: string; flags: kSiteFlags; var info: kpageInfo);
 var z      : integer = 0;
     title,
     summary,
@@ -421,18 +444,16 @@ begin
 
      who:= cleanHTMLForIRC(ExtractSubstr(buffer, z, ['@']));
    { summary }
-{     scanToWord('<div', buffer, z);
-     find_next('>', buffer, z);
-     inc(z);
-     summary:= clip_text(cleanHTMLForIRC(scanToWord('<footer>', buffer, z)), 180);
-}
-     result := reduce_white_space(mIRCcolor(clBlue)
-             + 'Pipedot Comment by ' + who + ': '
-             + mIRCcolor(clGreen) + title + ' '
-             + mIRCcolor(clBlue) + score);// + mIRCcolor(clNone) + ' ' + summary);
+     extract_subStr(buffer, z, '<div');
+     z:= PosEx('>', buffer, z) + 1;
+
+     info.description:= cleanHTMLForIRC(extract_subStr(buffer, z, '<footer>'));
+
+     info.title:= reduce_white_space('Pipedot Comment by ' + who + ': '
+                                    + title + ' ' + score);
 end;
 
-function getXMLtitle(buffer: string): string;
+procedure getXMLtitle(buffer: string; var info: kpageInfo);
 { For generic XML/HTML pages (including feeds) }
 var z: integer = 0;
 begin
@@ -440,30 +461,29 @@ begin
     if z > 0 then begin
         z:= PosEx('>', buffer, z) + 1;
 
-        result:= mIRCcolor(clGreen) + clip_text(cleanHTMLForIRC(extract_subStr(buffer, z, '</title')), 120) + mIRCcolor(clNone);
-{
+        info.title:= cleanHTMLForIRC(extract_subStr(buffer, z, '</title'));
+
         z:= TextPos('="og:description"',buffer);
         if z > 0 then begin
             while (buffer[z] <> '<') and (z > 1) do
                 dec(z);
-            scanToWord('content="', buffer, z);
-            find_next('"', buffer, z);
-            inc(z);
-            result+= ': ' + clip_text(cleanHTMLForIRC(scanToWord('"', buffer, z)), 180);
+            extract_subStr(buffer, z, 'content="');
+            z:= PosEx('"', buffer, z) + 1;
+
+            info.description:= ': ' + cleanHTMLForIRC(ExtractSubstr(buffer, z, ['"']))
         end else begin
         z:= TextPos('name="description"',buffer);
         if z > 0 then begin
                 while (buffer[z] <> '<') and (z > 1) do
                     dec(z);
-                scanToWord('content="', buffer, z);
-                find_next('"', buffer, z);
-                inc(z);
-                result+= ': ' + clip_text(cleanHTMLForIRC(scanToWord('"', buffer, z)), 180);
-            end;
+                extract_subStr(buffer, z, 'content="');
+                z:= PosEx('"', buffer, z) + 1;
+
+                info.description:= ': ' + cleanHTMLForIRC(ExtractSubstr(buffer, z, ['"']))
+            end
         end;
-}
-    end else
-        result:= '';
+
+    end
 end;
 
 function stripHTML(buffer: string): string;
