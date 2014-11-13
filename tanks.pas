@@ -244,7 +244,7 @@ begin
             setLength(result, rl)
         end;
     end;
-    setLength(result, y - 1)
+    setLength(result, y)
 end;
 
 end.

@@ -25,7 +25,7 @@ uses
 type
     kRWModes = (cp_No_touch, // don't let strangers touch this
                 cp_Helmet,   // 'special' people, like admins
-                cp_Pleebs);  // anyone can poke this
+                cp_Plebes);  // anyone can poke this
 
     kHivePermissions = record
         r,
@@ -37,8 +37,6 @@ type
 
     kResult         = (kr_fine, kr_exists, kr_not_exists, kr_wtf);
 
-
-
     { kHive_ancestor }
 
     kHive_ancestor = class(TFPHashObject)
@@ -47,13 +45,14 @@ type
         cell_type              : kCellType;
         cell_properties        : kCellProperties;
 
-        function    getCount   : integer;virtual;abstract;
       protected
         function    kGetItem   (index: string): string;virtual;abstract;
         procedure   kSetItem   (index: string; aValue: string);virtual;abstract;
         function    getRandom  : string;virtual;abstract;
-        procedure   setPerms   (permissions: string);
-        function    getPerms   : string;
+        procedure   setStrPerms(permissions: string);
+        function    getStrPerms: string;
+        procedure   setPerms   (permissions: kHivePermissions);
+        function    getPerms   : kHivePermissions;
       public
         constructor Create     (HashObjectList:TFPHashObjectList;const s:shortstring);
       public
@@ -62,10 +61,13 @@ type
         function    to_stream  : string;virtual;abstract;
         procedure   from_stream(aStream: string);virtual;abstract;
         procedure   to_console;virtual;abstract;
+        function    getCount   : integer;virtual;abstract;
+        function    getSize    : integer;virtual;abstract;
       public
         property    items[index: string]: string read kGetItem write kSetItem; default;
         property    count      : integer read getCount;
-        property    Permissions: string read getPerms write setPerms;
+        property    SPermissions: string read getStrPerms write setStrPerms;
+        property    Permissions: kHivePermissions read getPerms write setPerms;
     end;
 
     { kKeyVal_hive }
@@ -87,12 +89,14 @@ type
         function    getRandom  : string;override;
       public
         procedure   to_console;override;
+        function    getSize    : integer;override;
+        function    getCount   : integer;override;
       private
         buffer: string; // because the stupid iterator has to be a method and they
-                        // don't just give a numerically-indexed accessor
-        procedure   iteratee     (Item: String; const Key: string; var Continue: Boolean);
-        procedure   dump_iteratee(Item: String; const Key: string; var Continue: Boolean);
-        function    getCount     : integer;override;
+        aValue: integer;// don't just give a numerically-indexed accessor
+        procedure   iteratee      (Item: String; const Key: string; var Continue: Boolean);
+        procedure   dump_iteratee (Item: String; const Key: string; var Continue: Boolean);
+        procedure   size_iteratee (Item: String; const Key: string; var Continue: Boolean);
     end;
 
     { kList_hive }
@@ -112,10 +116,10 @@ type
         constructor Create     (HashObjectList:TFPHashObjectList;const s:shortstring);
       public
         procedure   to_console;override;
+        function    getSize    : integer;override;
+        function    getCount   : integer;override;
       protected
         function    getRandom  : string;override;
-      private
-        function    getCount   : integer;override;
     end;
 
 
@@ -126,30 +130,41 @@ type
         theDirectory: string;
 
 
-        function  add_hive       (name, h_class: string; permissions: string): kHive_ancestor;
+        function  add_hive       (name, h_class: string; permissions: kHivePermissions): kHive_ancestor;
         function  add_list_hive  (name: string; permissions: kHivePermissions): kList_hive;
         function  add_keyval_hive(name: string; permissions: kHivePermissions): kKeyVal_hive;
         function  del_hive       (name: string): boolean;
+        function  select_hive    (name: string): kHive_ancestor;
+        function  select_hive    (index: integer): kHive_ancestor;
+
+        function  getSize       : integer;
+        function  get_full_size : integer;
+        function  get_overhead  : integer;
+        function  get_cell_count: integer;
 
         procedure load           (path: string);
         procedure save           (path: string);
 
         procedure to_console     (hive: string);
       private
-        function  kGetItem       (index: string; permission: string): string;
-        procedure kSetItem       (index: string; permission: string; aValue: string);
+        function  kGetItem       (index: string; permission: kRWModes): string;
+        procedure kSetItem       (index: string; permission: kRWModes; aValue: string);
         function  kGetPerm       (index: string): string;
         procedure kSetPerm       (index: string; perm: string);
       public
         lastError: string;
       public
-        property  content[index: string;permission:string]: string read kGetItem write kSetItem; default;
+        property  content[index: string;permission:kRWModes]: string read kGetItem write kSetItem; default;
         property  permission[index: string]: string read kGetPerm write kSetPerm;
       private
         dirty: boolean;
     end;
 
     eHive_error = class(Exception);
+
+    function str2perms(aString: string): kHivePermissions;
+    function str2perm(aString: string): kRWModes;
+    function perms2string(perms: kHivePermissions): string;
 
 implementation
 uses strutils, sha1, kUtils, tanks;
@@ -164,7 +179,7 @@ begin
     case perm of
         cp_No_touch: result:= 'none';
         cp_Helmet  : result:= 'some';
-        cp_Pleebs  : result:= 'everyone';
+        cp_Plebes  : result:= 'everyone';
     else
         result:= 'none' // Err on the side of caution. The constructor is
                         // supposed to be filling this in; it's not
@@ -179,10 +194,10 @@ end;
 
 function str2perm(aString: string): kRWModes;
 begin
-    case aString of
+    case lowerCase(aString) of
         'none'    : result:= cp_No_touch;
         'some'    : result:= cp_Helmet;
-        'everyone': result:= cp_Pleebs;
+        'everyone': result:= cp_Plebes;
     end
 end;
 
@@ -190,9 +205,11 @@ function str2perms(aString: string): kHivePermissions;
 var y: tStringList;
     z: integer = 0;
 begin
+
     y:= splitByType(aString);
+    z:= 0;
     while z+1 < y.Count do begin
-        case y.Strings[z] of
+        case lowerCase(y.Strings[z]) of
             'r': begin
                      inc(z, 2);
                      result.r:= str2perm(y.Strings[z]);
@@ -209,28 +226,38 @@ end;
 
 { kHive_ancestor }
 
-procedure kHive_ancestor.setPerms(permissions: string);
+procedure kHive_ancestor.setStrPerms(permissions: string);
 begin
     kPermissions:= str2perms(permissions)
 end;
 
-function kHive_ancestor.getPerms: string;
+function kHive_ancestor.getStrPerms: string;
 begin
     result:= perms2string(kPermissions)
+end;
+
+procedure kHive_ancestor.setPerms(permissions: kHivePermissions);
+begin
+    kPermissions:= permissions
+end;
+
+function kHive_ancestor.getPerms: kHivePermissions;
+begin
+    result:= kPermissions
 end;
 
 constructor kHive_ancestor.Create(HashObjectList:TFPHashObjectList;const s:shortstring);
 begin
     inherited;
     cell_properties := [];
-    kPermissions.r  := cp_No_touch;
-    kPermissions.w  := cp_No_touch;
+    kPermissions.r  := cp_Helmet;
+    kPermissions.w  := cp_Helmet;
 end;
 
 
 { kHive_cluster }
 
-function kHive_cluster.add_hive(name, h_class: string; permissions: string): kHive_ancestor;
+function kHive_cluster.add_hive(name, h_class: string; permissions: kHivePermissions): kHive_ancestor;
 begin
     if name = '' then
         raise eHive_error.Create('Empty hive name')
@@ -238,22 +265,25 @@ begin
         raise eHive_error.Create('Empty hive class');
 
     case h_class of
-        'keyvalue': result:= add_keyval_hive(name, str2perms(permissions));
-        'list'    : result:= add_list_hive(name, str2perms(permissions));
+        'keyvalue': result:= add_keyval_hive(name, permissions);
+        'list'    : result:= add_list_hive(name, permissions);
         else
-            raise eHive_error.Create('Undefined hive class: ' + h_class)
+            lastError:= 'Undefined hive class: ' + h_class
     end
 end;
 
 function kHive_cluster.add_list_hive(name: string; permissions: kHivePermissions): kList_hive;
 begin
     try
-       result             := kList_hive.Create(self, name);
-       result.cell_type   := ct_StringList;
-       result.kPermissions:= permissions;
-       dirty              := true;
+        if FindIndexOf(name) = -1 then
+        begin
+            result             := kList_hive.Create(self, lowerCase(name));
+            result.cell_type   := ct_StringList;
+            result.kPermissions:= permissions;
+            dirty              := true
+        end
     except
-        on EDuplicate do result:= nil
+        on EDuplicate do result:= kList_hive(Find(lowerCase(name)))
     end
 end;
 
@@ -261,12 +291,15 @@ end;
 function kHive_cluster.add_keyval_hive(name: string; permissions: kHivePermissions): kKeyVal_hive;
 begin
     try
-       result             := kKeyVal_hive.Create(self, name);
-       result.cell_type   := ct_Hashlist;
-       result.kPermissions:= permissions;
-       dirty              := true;
+        if FindIndexOf(name) = -1 then
+        begin
+            result             := kKeyVal_hive.Create(self, lowerCase(name));
+            result.cell_type   := ct_Hashlist;
+            result.kPermissions:= permissions;
+            dirty              := true
+        end
     except
-        on EDuplicate do result:= nil
+        on EDuplicate do result:= kKeyVal_hive(Find(lowerCase(name)))
     end
 end;
 
@@ -277,19 +310,75 @@ begin
     lastError:= '';
     try
         dirty := true;
-        aHive := kHive_ancestor(Find(name));
+        aHive := select_hive(lowerCase(name));
         if aHive = nil then begin
             lastError:= 'Hive "' + name + '" could not be deleted because it doesn''t exist';
             result   := false;
             exit
         end;
-        aHive.free;
+        Remove(aHive);
         DeleteFile(ConcatPaths([theDirectory, name+'.hive']));
         result:= true
     except
         result   := false;
         lastError:= 'Dunno what happened. The exceptional hive was "' + name + '"';
     end;
+end;
+
+function kHive_cluster.select_hive(name: string): kHive_ancestor;
+begin
+    result:= kHive_ancestor(Find(name))
+end;
+
+function kHive_cluster.select_hive(index: integer): kHive_ancestor;
+begin
+    result:= kHive_ancestor(GetItem(index))
+end;
+
+function kHive_cluster.getSize: integer;
+var z: integer;
+begin
+    result:= 0;
+    for z:= 0 to Count-1 do
+        inc(result, select_hive(z).getSize);
+end;
+
+function kHive_cluster.get_full_size: integer;
+{ This one includes the overhead of the keys as well as the classes }
+var z: integer;
+    y: kHive_ancestor;
+begin
+    result:= 0;
+    for z:= 0 to Count-1 do
+    begin
+        y:= select_hive(z);
+        inc(result, y.getSize);
+        inc(result, length(y.Name));
+        inc(result, y.InstanceSize);  // Well, technically, we gloss over the size
+        inc(result, self.InstanceSize)// difference between hive classes. Whatever.
+    end
+end;
+
+function kHive_cluster.get_overhead: integer;
+var z: integer;
+    y: kHive_ancestor;
+begin
+    result:= 0;
+    for z:= 0 to Count-1 do
+    begin
+        y:= select_hive(z);
+        inc(result, length(y.Name));
+        inc(result, y.InstanceSize);
+        inc(result, self.InstanceSize)
+    end
+end;
+
+function kHive_cluster.get_cell_count: integer;
+var z: integer;
+begin
+    result:= 0;
+    for z:= 0 to count-1 do
+        inc(result, select_hive(z).getCount)
 end;
 
 
@@ -299,7 +388,7 @@ var z      : integer = 0;
     buffer : string;
     hives  : tStringList;
     aHive  : kHive_ancestor;
-    perms  : string;
+    perms  : kHivePermissions;
     props  : kKeyValues;
 
     h_name : string;
@@ -318,14 +407,15 @@ begin
         props  := tanks2keyvalues(hives.Strings[z]);
         h_name := '';
         h_class:= '';
-        perms  := 'r:none;w:none';
+        perms.r:= cp_No_touch;
+        perms.w:= cp_No_touch;
 
         for y:= 0 to length(props)-1 do
         begin
             case props[y].key of
                 'name'       : h_name := props[y].value;
                 'class'      : h_class:= props[y].value;
-                'permissions': perms  := props[y].value;
+                'permissions': perms  := str2perms(props[y].value);
             end
         end;
 
@@ -335,8 +425,9 @@ begin
 
         if buffer <> '' then
             aHive.from_stream(buffer)
-        else
-            raise eHive_error.Create('Empty hive stream: ' + h_name);
+        else  // maybe it's just not been saved yet
+            writeln(stdErr, 'Empty hive stream: ', h_name)
+//            raise eHive_error.Create('Empty hive stream: ' + h_name);
     end;
     dirty:= false
 end;
@@ -345,11 +436,17 @@ procedure kHive_cluster.save(path: string);
 var z      : dWord;
     buffer : string = '';
     h_class: string;
+    y      : kHive_ancestor;
 begin
   { Write out any modified hives }
     for z:= 0 to Count - 1 do
-        if cellProp_dirty in kHive_ancestor(items[z]).cell_properties then
-            string2File(ConcatPaths([path, NameOfIndex(z) + '.hive']), kHive_ancestor(items[z]).to_stream);
+        y:= select_hive(z);
+        if cellProp_dirty in y.cell_properties then
+        begin
+            string2File(ConcatPaths([path, y.Name + '.hive']), y.to_stream);
+            Exclude(y.cell_properties, cellProp_dirty);
+            writeln('Hive saved: ', y.Name)
+        end;
 
   { Write index if modified }
     if dirty then begin
@@ -357,18 +454,18 @@ begin
         begin
 //            if kHive_ancestor(items[z]).count > 0 then
 //            begin
-                writeln('[[' + intToStr(kHive_ancestor(items[z]).count));
                 case items[z].ClassName of
                     'kKeyVal_hive': h_class:= 'keyvalue';
                     'kList_hive'  : h_class:= 'list'
                 end;
                 buffer+= tank(keyvalue2tanks('name', kHive_ancestor(items[z]).Name)
                             + keyvalue2tanks('class', h_class)
-                            + keyvalue2tanks('permissions', kHive_ancestor(items[z]).Permissions), []);
+                            + keyvalue2tanks('permissions', kHive_ancestor(items[z]).SPermissions), []);
             end;
 //        end;
 
         string2File(ConcatPaths([path, 'root.hive']), tank(buffer, [so_sha1]));
+        writeln('Hive root saved');
         dirty:= false
     end
 end;
@@ -379,7 +476,7 @@ var z    : integer;
 begin
     if hive <> '' then
     begin
-        aHive:= kHive_ancestor(Find(hive));
+        aHive:= kHive_ancestor(Find(lowerCase(hive)));
         if aHive <> nil then
             aHive.to_console
         else
@@ -405,7 +502,7 @@ begin
             z:= 0
     end;
     if z > 1 then
-        result.key:= path[1..z-1]
+        result.key:= lowerCase(path[1..z-1])
     else
         result.key:= '';
     if z < length(path) then
@@ -414,13 +511,14 @@ begin
         result.value:= ''
 end;
 
-function kHive_cluster.kGetItem(index: string; permission: string): string;
+function kHive_cluster.kGetItem(index: string; permission: kRWModes): string;
 var kv    : kKeyValue;
     aHive : kHive_ancestor;
 begin
     lastError:= '';
     result   := '';
     kv       := resolve_path(index);
+
     if kv.key = '' then
     begin
         lastError:= c_ref + 'hive name';
@@ -432,21 +530,23 @@ begin
         exit
     end;
 
-    aHive := kHive_ancestor(Find(kv.key));
+    aHive := select_hive(kv.key);
     if aHive <> nil then begin
-        if str2perm(permission) <= str2perms(aHive.Permissions).r then
+        if permission <= aHive.Permissions.r then
+        begin
             result:= aHive.items[kv.value]
+        end
         else
         begin
-            result:= '';
+            result   := '';
             lastError:= 'Not enough permissions for ' + index
         end
     end
     else
-        lastError:= '## Hive not found: ' + index
+        lastError:= 'Hive not found: ' + index
 end;
 
-procedure kHive_cluster.kSetItem(index: string; permission: string; aValue: string);
+procedure kHive_cluster.kSetItem(index: string; permission: kRWModes; aValue: string);
 var kv   : kKeyValue;
     aHive: kHive_ancestor;
 begin
@@ -464,10 +564,9 @@ begin
         exit
     end;
 
-writeln('hive: ', kv.key, #9'cell: ', kv.value, #9'permission: ', permission, #9'aValue: ', aValue);
-    aHive := kHive_ancestor(Find(kv.key));
+    aHive := select_hive(kv.key);
     if aHive <> nil then begin
-        if str2perm(permission) <= str2perms(aHive.Permissions).w then
+        if permission <= aHive.Permissions.w then
             aHive.items[kv.value]:= aValue
         else
             lastError:= 'You require additional permissions for ' + index;
@@ -478,12 +577,12 @@ end;
 
 function kHive_cluster.kGetPerm(index: string): string;
 begin
-    result:= kHive_ancestor(Find(index)).Permissions
+    result:= select_hive(lowerCase(index)).SPermissions
 end;
 
 procedure kHive_cluster.kSetPerm(index: string; perm: string);
 begin
-    kHive_ancestor(Find(index)).Permissions:=perm
+    select_hive(lowerCase(index)).SPermissions:=perm
 end;
 
 
@@ -507,7 +606,7 @@ constructor kList_hive.Create(HashObjectList: TFPHashObjectList;
 begin
     inherited;
     content:= tStringList.Create;
-    content.Sorted    := true;      // Both of these should be optional
+//    content.Sorted    := true;      // Both of these should be optional
     content.Duplicates:= dupIgnore; // properties but I don't care at the moment
 end;
 
@@ -515,10 +614,19 @@ procedure kList_hive.to_console;
 var z: integer = 0;
 begin
     writeln('==== HIVE DUMP ==== (', Name, '; list)');
-    writeln('Permissions: ', Permissions);
+    writeln('Permissions: ', SPermissions);
     for z:= 0 to content.Count - 1 do
         writeln(#9, content.Strings[z]);
     writeln('==== END ==== (', Name, '; ', content.count, ' cells)')
+end;
+
+function kList_hive.getSize: integer;
+var z: integer;
+begin
+    result:= 0;
+    if content.Count > 0 then
+        for z:= 0 to content.Count-1 do
+            inc(result, length(content.Strings[z]))
 end;
 
 function kList_hive.to_stream: string;
@@ -631,6 +739,13 @@ begin
     Continue:= true
 end;
 
+procedure kKeyVal_hive.size_iteratee(Item: String; const Key: string;
+    var Continue: Boolean);
+begin
+    inc(aValue, length(item));
+    Continue:= true
+end;
+
 function kKeyVal_hive.kGetItem(index: string): string;
 begin
     result:= content.Items[index]
@@ -638,7 +753,6 @@ end;
 
 procedure kKeyVal_hive.kSetItem(index: string; aValue: string);
 begin
-    writeln('\\'#9'index: ', index, ' aValue: ', aValue);
     Include(cell_properties, cellProp_dirty);
     content.Items[index]:= aValue
 end;
@@ -671,9 +785,16 @@ end;
 procedure kKeyVal_hive.to_console;
 begin
     writeln('==== HIVE DUMP ==== (', Name, '; keyval)');
-    writeln('Permissions: ', Permissions);
+    writeln('Permissions: ', SPermissions);
     content.Iterate(@dump_iteratee);
     writeln('==== END ==== (', Name, '; ', content.count, ' cells)')
+end;
+
+function kKeyVal_hive.getSize: integer;
+begin
+    aValue:= 0;
+    content.Iterate(@size_iteratee);
+    result:= aValue
 end;
 
 end.

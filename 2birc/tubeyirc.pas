@@ -291,6 +291,9 @@ begin
     if word_is_present(me.nick, uMessage.message) then
         uMessage.flags:= uMessage.flags + [mfHighlight];
 
+    if uMessage.channel = me.nick then // Need this for PMs to work
+        uMessage.channel:= uMessage.user.nick;
+
     case command of
         'KICK'   : if OnKick <> nil then
                       onKick(uMessage);
@@ -454,10 +457,7 @@ procedure kIrcClient.join(channel: string);
 var
     z: integer;
 begin
-//    if channels.Find(channel, z) then begin
-        writeString('JOIN ' + channel);
-//        channels.Add(channel);
-//    end;
+        writeString('JOIN ' + channel)
 end;
 
 procedure kIrcClient.join(channelList: tStringList);
@@ -471,10 +471,7 @@ procedure kIrcClient.part(channel: string; reason: string = '');
 var
     z: integer;
 begin
-//    if channels.Find(channel, z) then begin
-        writeString('PART ' + channel + ' :' + reason);
-//        channels.Delete(z)
-//    end
+        writeString('PART ' + channel + ' :' + reason)
 end;
 
 procedure kIrcClient.kick(channel, user: string; reason: string = '');

@@ -8,73 +8,67 @@ unit url_title4;
 
 interface
 uses
-    Classes, SysUtils, unix, kUtils, urlStuff, textExtractors;
+    Classes, SysUtils, unix, kUtils, urlStuff, textExtractors, hives;
 
 type kSomeFlags = set of (gtHttp, gtHttps, gtFtp, gtGopher);
 
-     k_title_cache_item = record
-         url,
-         title  : string;
-         expires,
-         seen   : tDateTime; // For people like EF who paste a link several times
-     end;
 
-     kTitleCache = class(tFpList);
-
-function getTitles(buffer: string; someFlags: kSomeFlags): tStringList;
+function getTitles(buffer: string; someFlags: kSomeFlags): kPageList;
 function pageIsUp (uri: string): boolean;
-function loadNaughties: dWord;
 
-var naughtyList: tStringList;
+var hive_cluster: kHive_cluster; // This is probably an ill-advised way to do get
+                                 // things done. The purpose is to have the robot's
+                                 // hive cluster available here since we're not
+                                 // using classes here for whatever reason.
+
+                                 // Anyhow, this should NOT be constructed locally;
+                                 // just set it to the bot's instance.
 
 implementation
-
-function loadNaughties: dWord;
-begin
-    if FileExists('/usr/local/etc/titlebot.ignores') then begin
-        naughtyList.LoadFromFile('/usr/local/etc/titlebot.ignores');
-        result:= naughtyList.Count;
-        writeLn(#9'Ignore list: loaded ', naughtyList.Count, ' strings')
-    end
-end;
+uses dateutils, regexpr;
 
 function isSafe(buffer: string): boolean;
+var z: integer = 0;
+    y: tStringList;
+    x: boolean = false;
 begin
+    y     := kList_hive(hive_cluster.Find('titles.ignore')).content;
+    if y.count = 0 then
+    begin
+        result:= true;
+        exit
+    end;
     buffer:= lowerCase(buffer);
 //    result:= false;
-    result:= not contains_any_strings(naughtyList, buffer, true) //then exit else
-{    if Pos('//localhost', buffer) > 0 then exit else
-    if Pos('//127.', buffer) > 0 then exit else
-    if Pos('//192.168', buffer) > 0 then exit else
-    if Pos('//10.', buffer) > 0 then exit else
-    if Pos('//0.', buffer) > 0 then exit else
-    if Pos('//255.', buffer) > 0 then exit else
-    if Pos('example.com', buffer) > 0 then exit else
-    if Pos('kidd', buffer) > 0 then exit else // Anything else? Don't need to be party v& again}
-//    result:= true
+//    result:= not contains_any_strings(naughtyList, buffer, true) //then exit else
+    while (z < y.count-1) and (not x) do
+    begin
+        regexpr.ExecRegExpr(y.Strings[z], buffer);
+        inc(z)
+    end;
+    result:= not x
 end;
 
-function doRequest(var uri: string; baseName: string; out props: kFileProperties; out buffer: string; out contentType: string; out redirects: byte): kRequestResult;
+//function doRequest(var uri: string; baseName: string; out props: kFileProperties; out buffer: string; out contentType: string; out redirects: byte): kRequestResult;
+function doRequest(var aSite: kpageInfo; baseName: string; out props: kFileProperties): kRequestResult;
 const
     uaString = 'Mozilla/5.0 (monopoly 2; X11; Linux x86_64; rv:24.7) Gecko/20140911 Firefox/24.7';
 var aFile   : tStringList;
     z       : dWord;
-    redirs  : byte = 0;
-    urls    : tStringList;
     final   : boolean = false;
 begin
-    urls  := tStringList.Create;
     aFile := tStringList.Create;
+    aSite.redirects:= 0;
     props := [];
     result:= isOK;
 
-    while (not final) and (redirs < 6) do begin
-        uri:= stripUrlShit(uri);
-        if not isSafe(uri) then begin
+    while (not final) and (aSite.redirects < 6) do begin
+        aSite.url:= stripUrlShit(aSite.url);
+        if not isSafe(aSite.url) then begin
             result:= isNothing;
             exit
         end;
-        fpSystem('curl -m 8 -x "http://10.10.9.254:3128" -A "' + uaString + '" -k -s -D ' + baseName + '.head "' + uri + '" > ' + baseName + '.body');
+        fpSystem('curl -m 8 -x "http://10.10.9.254:3128" -A "' + uaString + '" -k -s -D ' + baseName + '.head "' + aSite.url + '" > ' + baseName + '.body');
         if not (FileExists(baseName + '.head') and FileExists(baseName + '.body')) then begin
             result:= isNotFound;
             break
@@ -89,67 +83,57 @@ begin
         while z < aFile.Count do begin
             if TextPos('http/', aFile.Strings[z]) > 0 then begin
                 if Pos ('30', aFile.Strings[z]) > 0 then
-                    inc(redirs)
+                    inc(aSite.redirects)
                 else
                     final:= true
             end;
             if TextPos('location', aFile.Strings[z]) > 0 then
-                uri:= aFile.Strings[z][Pos(':', aFile.Strings[z])+2..length(aFile.Strings[z])];
+                aSite.url:= aFile.Strings[z][Pos(':', aFile.Strings[z])+2..length(aFile.Strings[z])];
             if TextPos('content-type', aFile.Strings[z]) > 0 then begin
-                contentType:= aFile.Strings[z];
-                if TextPos('text', contentType) > 0 then props+= [isText];
-                if (TextPos('xml', contentType) > 0) or (TextPos('html', contentType) > 0) then props+= [isXMLish];
+                aSite.mimetype:= aFile.Strings[z];
+                if TextPos('text', aSite.mimetype) > 0 then props+= [isText];
+                if (TextPos('xml', aSite.mimetype) > 0) or (TextPos('html', aSite.mimetype) > 0) then props+= [isXMLish];
             end;
             inc(z)
         end
     end;
-
-    if props <= [isText, isXMLish] then begin
-        aFile.LoadFromFile(baseName + '.body');
-        buffer:= aFile.Text;
-    end;
-
-    urls.free;
     aFile.free;
-    if not final then
-        result:= isTooRedirectish;
-    redirects:= redirs; // maybe just need one variable. Oh well.
 
+    if props <= [isText, isXMLish] then
+        aSite.content:= file2string(baseName + '.body');
+
+    if not final then
+        result:= isTooRedirectish
 end;
 
 function pageIsUp(uri: string): boolean;
 var baseName : string = '/tmp/.sitecheck.ask';
     props    : kFileProperties;
-    buffer   : string;
-    cType    : string;
-    redirects: byte = 0;
+    aSite    : kpageInfo;
     theResult: kRequestResult;
 begin
-    theResult:= doRequest(uri, baseName, props, buffer, cType, redirects);
-    result:= pos('GMT by cella (squid/', buffer) < 2
+    aSite.url:= uri;
+    theResult:= doRequest(aSite, baseName, props);
+    result   := pos('GMT by cella (squid/', aSite.content) < 2
 end;
 
 
-function getTitles(buffer: string; someFlags: kSomeFlags): tStringList;
+procedure fillTitle(aPage: kpageInfo; someFlags: kSomeFlags);
 const
     a = '/tmp/titlebot.';
 var z            : dWord;
     y            : dWord;
+    x            : dWord = 0;
     oldUri       : string          = '';
-    title        : string          = '';
     content      : string          = '';
     aFile        : string          = '';
-    contentType  : string          = '';
-    redirects    : byte;
-//    user,
-//    channel,
-    message      : string;
     lines        : tStringList;
     theSite      : kSite;
     fileProps    : kFileProperties;
     requestResult: kRequestResult;
-    DoABarrelRoll: boolean = true;
     hasTheTitle  : boolean;
+    cache        : kHive_ancestor;
+    ignorables   : tStringList;
 begin
   { A little hackishness. This was the only way loading files would work before
     I figured out files don't work well in global space. I'm not going to change
@@ -157,75 +141,145 @@ begin
 
   { Oh yeah, the real hack is curl --> files --> here instead of using pipes or
     learning to https. }
-    lines := TStringList.Create;
+
+    aFile := a + '.' + intToStr(random(65535));
+
+    if ((gtHttp in someFlags) and (TextPos('http:/', aPage.url) = 1)) or ((gtHttps in someFlags) and (TextPos('https:/', aPage.url) = 1)) then
+    begin
+        writeln(#9'url: ', aPage.url);
+        oldUri := aPage.url;
+        writeln('Requesting: ', aPage.url);
+        requestResult:= doRequest(aPage, aFile, fileProps);
+        if FileExists(aFile + '.head') then DeleteFile(aFile + '.head');
+        if FileExists(aFile + '.body') then DeleteFile(aFile + '.body');
+        theSite:= detectSite(aPage.url);
+
+      { File hacks are done; everything else is just string passing.
+        It's still terrible because there's a lot of lowerCase() calling,
+        which should be replaced with a record of two strings or something. }
+
+        if (requestResult = isOK) and (aPage.content <> '') then
+        begin
+            if isXMLish in fileProps then
+            begin
+                case theSite.site of
+                    siWhatever,
+                    siSoyMain,
+                    siYouTube    : getXMLtitle(aPage);
+                    siSoyArticle : getSoylentArticle(theSite.flags, aPage);
+                    siSoyComment : getSoylentComment(theSite.flags, aPage);
+                    siSoyPoll    : getSoylentPoll(theSite.flags, aPage);
+                    siSoySub     : getSoylentSubmission(theSite.flags, aPage);
+
+                    siPipeArticle: getPipedotArticle(theSite.flags, aPage);
+                    siPipeComment: getPipedotComment(theSite.flags, aPage);
+
+                    siPedia      : begin
+                                       y:= pos('#', aPage.url);
+                                       if y = 0 then
+                                           getWikiTextia('', aPage)
+                                       else
+                                           getWikiTextia(aPage.url[y+1..length(aPage.url)], aPage); // Broken for mobile pages
+                                       end;
+
+//                  siYouTube    : getYouTubeDiz(content, aPage); // Broken; the XML one is good enough
+                end;
+            end;
+        end{ else if isText in fileProps then begin
+             aPage.mimetype:= contentType;
+             end else}
+             ; // do stuff
+
+        hasTheTitle:= (theSite.site = siWhatever) and urlHasTitle(oldUri, aPage.title);
+
+        if aPage.url <> oldUri then aPage.title+= ' ( '+stripSomeControls(aPage.url)+' )';
+    end;
+
+    if ((not hasTheTitle) or (aPage.redirects > 0)) and (aPage.title <> '') then
+    begin
+        aPage.title    := stripSomeControls(aPage.title);
+        aPage.refreshed:= now;
+        writeln(aPage.title);
+    end
+end;
+
+function getTitles(buffer: string; someFlags: kSomeFlags): kPageList;
+const
+    a = '/tmp/titlebot.';
+var z            : dWord;
+    y            : dWord;
+    x            : dWord = 0;
+    oldUri       : string          = '';
+    content      : string          = '';
+    aFile        : string          = '';
+    lines        : tStringList;
+    theSite      : kSite;
+    aPage        : kpageInfo;
+    fileProps    : kFileProperties;
+    requestResult: kRequestResult;
+    hasTheTitle  : boolean;
+    cache        : kHive_ancestor;
+    ignorables   : tStringList;
+begin
+  { A little hackishness. This was the only way loading files would work before
+    I figured out files don't work well in global space. I'm not going to change
+    it now, at least until total rewrite. }
+
+  { Oh yeah, the real hack is curl --> files --> here instead of using pipes or
+    learning to https. }
+    lines:= TStringList.Create;
 
     aFile := a + '.' + intToStr(random(65535));
     lines.clear;
     lines := extractURLs(buffer[z+1..length(buffer)]);
-    result:= tStringList.Create;
+    setLength(result, lines.Count);
     if lines.count > 0 then
+        cache     := hive_cluster.select_hive('_titles.cache');
+        ignorables:= kList_hive(hive_cluster.select_hive('_titles.ignore')).content;
+
         for z:= 0 to lines.count-1 do begin
-            buffer := lines.Strings[z];
-            title  := '';
-            if ((gtHttp in someFlags) and (TextPos('http:/', buffer) > 0)) or ((gtHttps in someFlags) and (TextPos('https:/', buffer) > 0)) then begin
-                writeln(#9'url: ', buffer);
-                oldUri := buffer;
-                writeln('Requesting: ', buffer);
-                requestResult:= doRequest(buffer, aFile, fileProps, content, contentType, redirects);
-                if FileExists(aFile + '.head') then DeleteFile(aFile + '.head');
-                if FileExists(aFile + '.body') then DeleteFile(aFile + '.body');
-                theSite:= detectSite(buffer);
+            aPage.url        := lines.Strings[x];
+            aPage.title      := '';
+            aPage.description:= '';
+            aPage.redirects  := 0;
 
-              { File hacks are done; everything else is just string passing.
-                It's still terrible because there's a lot of lowerCase() calling,
-                which should be replaced with a record of two strings or something. }
-
-                if (requestResult = isOK) and (content <> '') then begin
-                    if isXMLish in fileProps then begin
-                        case theSite.site of
-                            siWhatever,
-                            siSoyMain,
-                            siYouTube    : title:= getXMLtitle(content);
-                            siSoyArticle : title:= getSoylentArticle(content, theSite.flags);
-                            siSoyComment : title:= getSoylentComment(content, theSite.flags);
-                            siSoyPoll    : title:= getSoylentPoll(content, theSite.flags);
-                            siSoySub     : title:= getSoylentSubmission(content, theSite.flags);
-
-                            siPipeArticle: title:= getPipedotArticle(content, theSite.flags);
-                            siPipeComment: title:= getPipedotComment(content, theSite.flags);
-
-                            siPedia      : begin
-                                               y:= pos('#', buffer);
-                                               if y = 0 then
-                                                   title:= getWikiTextia(content, '')
-                                               else
-                                                   title:= getWikiTextia(content, buffer[y+1..length(buffer)]); // Broken for mobile pages
-                                           end;
-
-//                            siYouTube    : title:= getYouTubeDiz(content); // Broken; the XML one is good enough
-                            end;
-
-                        end;
-                    end else if isText in fileProps then begin
-                        title:= contentType;
-                    end else
-                        ; // do stuff
-
-                    hasTheTitle:= (theSite.site = siWhatever) and urlHasTitle(oldUri, title);
-
-                    if buffer <> oldUri then title+= ' ( '+stripSomeControls(buffer)+' )';
+          { Check for ignorables }
+            y:= 0;
+            hasTheTitle:= false;
+            if ignorables.Count > 0 then
+                while (not hasTheTitle) and (y < ignorables.Count) do
+                begin
+                    hasTheTitle:= regexpr.ExecRegExpr(ignorables[y], lines[z]);
+                    inc(y);
                 end;
-                { ':'#9 allows the IRC bot to skip error messages, even though they should be
-                  going to stdErr, anyway. Apparently I was doin' it wrong in KVIrc. }
-                if ((not hasTheTitle) or (redirects > 0)) and (title <> '') then
-                    result.Append(stripSomeControls(title))
+                if hasTheTitle then
+                begin
+                    writeln('Ignoring url: ', lines[z]);
+                    break
+                end;
+
+          { Check for cache }
+            oldUri:= cache.items[aPage.url]; // variable_reuse++ # for naughtiness
+            if oldUri <> '' then
+            begin
+                aPage:= tank2pageInfo(oldUri);
+                if MinutesBetween(aPage.last_emitted, now) < 5 then // keep from amplifying
+                    writeln('Too soon! (', lines[z], ')')           // repetitive-link flood
+                else
+                begin
+                    if MinutesBetween(aPage.refreshed, now) > 10 then // refresh cache
+                        fillTitle(aPage, someFlags);
+                    aPage.last_emitted:= now;
+                    cache.items[aPage.url]:= pageInfo2tank(aPage)
+                end
             end
-        end;
-
-initialization
-
-naughtyList:= TStringList.create;
-loadNaughties
-
+            else
+            begin
+                fillTitle(aPage, someFlags);
+                aPage.last_emitted:= now;
+                cache.items[aPage.url]:= pageInfo2tank(aPage)
+            end
+        end
+    end
 ;end. // the compiler suddenly needs a semicolon here
 

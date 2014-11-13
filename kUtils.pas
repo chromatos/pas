@@ -25,7 +25,6 @@ function  splitByType         (yourString: string; skipWhiteSpace: boolean = tru
 
 function  split               (delimiter: char; yourString: string): tStringList; // These are unnecessary because
 function  join_stringList     (delimiter: char; stringList: tStringList): string; // we're using tStringList now.
-function  split2array         (delimiter: char; yourString: string): kStrings;
 
 function  split_by_sequence   (sequence, buffer: string): tStringList;
 
@@ -374,59 +373,23 @@ end;
 
 { String splitting }
 
-function split2array(delimiter: char; yourString: string): kStrings;
-var z,
-    y,
-    aIndex: integer;
-begin
-    z     := 0;
-    y     := 1;
-    setLength(result, 64);
-
-    while z <= length(yourString) do
-    begin
-        inc(z);
-        if yourString[z] in [delimiter] then inc(y)
-    end;
-    if y > 1 then
-    begin
-        z:= 0;
-        y:= 1;
-    while z <= length(yourString) do
-    begin
-        inc(z);
-            if yourString[z] in [delimiter] then
-            begin
-                if length(result) = aIndex then setLength(result, aIndex+8);
-                result[aIndex]:= yourString[y..z-1];
-                inc(aIndex);
-                inc(z);
-                y:= z
-            end else
-            if z = length(yourString) then
-                result[aIndex]:= yourString[y..z]
-        end
-    end;
-    setLength(result, aIndex)
-end;
-
 
 function split(delimiter: char; yourString: string): tStringList;
 var z,
     y: integer;
 begin
-    z:= 0;
-    y:= 1;
-
-    while z <= length(yourString) do
+//    z:= 0;
+//    y:= 1;
+    result              := tStringList.Create;
+    result.Delimiter    := delimiter;
+    result.DelimitedText:= yourString;
+{    while z <= length(yourString) do
     begin
         inc(z);
         if yourString[z] in [delimiter] then inc(y)
     end;
     if y > 1 then
     begin
-        if split = nil then
-            split:= tStringList.Create;
         z:= 0;
         y:= 1;
     while z <= length(yourString) do
@@ -434,14 +397,14 @@ begin
         inc(z);
             if yourString[z] in [delimiter] then
             begin
-                split.Append(yourString[y..z-1]);
+                result.Append(yourString[y..z-1]);
                 inc(z);
                 y:= z
             end else
             if z = length(yourString) then
-                split.Append(yourString[y..z])
+                result.Append(yourString[y..z])
         end
-    end
+    end}
 end;
 
 
@@ -530,12 +493,14 @@ end;
 
 function string2KeyValues(buffer: string): kKeyValues;
 var z: integer = 0;
-    x: kStrings;
+    x: tStringList;
 begin
-    x:= split2array(';', buffer);
-    setLength(result, length(x));
-    for z:= 0 to high(x) do
-        result[z]:= string2KeyValue(x[z])
+    x:= split(';', buffer);
+    setLength(result, x.count);
+    if x.count > 0 then
+        for z:= 0 to x.Count-1 do
+            result[z]:= string2KeyValue(x[z]);
+    x.free
 end;
 
 
