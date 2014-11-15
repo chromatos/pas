@@ -15,48 +15,45 @@ uses
   url_title4, textExtractors,
   hives;
 
-const
-    root            = '/home/toobee/';
-    logFile         = root + 'monopo.log';
-    sourceLink      = 'https://github.com/chromatos/pas/tree/master/2birc';
-    save_ticker_max = 100;
 type
     kBotMode = (bmStopped, bmRunning, bmRestarting);
 
   { tMonopolyBot }
 
     tMonopolyBot = class(TCustomApplication)
-        bot        : kIRCclient;
-        procedure    doCommand       (message: kIrcMessage);
-        procedure    do_hive_command (command, buffer: string; message: kIrcMessage; authed: boolean);
+        bot     : kIRCclient;
+        procedure doCommand       (message: kIrcMessage);
+        procedure do_hive_command (command, buffer: string; message: kIrcMessage; authed: boolean);
 
-        procedure    handleInvite    (message: kIrcMessage);
-        procedure    handleMessage   (message: kIrcMessage);
-        procedure    handleNotice    (message: kIrcMessage);
-        procedure    handleKick      (message: kIrcMessage);
-        procedure    handleJoin      (message: kIrcMessage);
-        procedure    handlePart      (message: kIrcMessage);
-        procedure    handleConnect;
-        procedure    handleDisconnect;
-        procedure    handleSocket    (message: string; x: boolean);
-        procedure    switchTitles    (active: boolean);
-        procedure    showTitles      (message: kIrcMessage);
+        procedure handleInvite    (message: kIrcMessage);
+        procedure handleMessage   (message: kIrcMessage);
+        procedure handleNotice    (message: kIrcMessage);
+        procedure handleKick      (message: kIrcMessage);
+        procedure handleJoin      (message: kIrcMessage);
+        procedure handleNick      (message: kIrcMessage);
+        procedure handlePart      (message: kIrcMessage);
+        procedure handleConnect;
+        procedure handleDisconnect;
+        procedure handleSocket    (message: string; x: boolean);
+        procedure showTitles      (message: kIrcMessage);
 
-        procedure    doConfig;
+        procedure   doConfig;
 
       protected
-        procedure    DoRun;override;
+        procedure   DoRun;override;
       public
-        storage    : kHive_cluster;
-        prefix     : char;
-        logger     : tFileStream;
-        mode       : kBotMode;
-        constructor  Create(TheOwner: TComponent); override;
-        destructor   Destroy; override;
-        procedure    WriteHelp; virtual;
+        storage   : kHive_cluster;
+        prefix    : char;
+        logger    : tFileStream;
+        logFile   : string;
+        mode      : kBotMode;
+        constructor Create(TheOwner: TComponent); override;
+        destructor  Destroy; override;
+        procedure   WriteHelp; virtual;
       private
-        doTitles   : boolean;
-        save_ticker: dWord;
+        doTitles       : boolean;
+        save_ticker    : dWord;
+        save_ticker_max: integer;
     end;
 
 var
@@ -64,12 +61,21 @@ var
 { tMonopolyBot }
 
 procedure tMonopolyBot.handleJoin(message: kIrcMessage);
-begin
+begin                                       writeln(storage.select_hive('.channels').search(message.channel));
     if message.user.nick = bot.me.nick then
-        storage.select_hive('.channels').add('', message.channel)
+        if storage.select_hive('.channels').search(message.channel) = '' then
+            storage.select_hive('.channels').add('-', message.channel)
     else
     if (message.user.host = '0::1') or (message.user.nick = 'crutchy') or (TextPos('Soylent/Staff/', message.user.host) = 1) then
         bot.setMode(message.channel, '+v', message.user.nick);
+end;
+
+procedure tMonopolyBot.handleNick(message: kIrcMessage);
+begin          writeln(#9'::', message.message, ' || ', message.user.nick);
+    if message.user.nick = bot.me.nick then begin
+        storage.content['.config/me.nick', cp_No_touch]:= message.message;
+        bot.me.nick:= message.message
+    end
 end;
 
 procedure tMonopolyBot.handlePart(message: kIrcMessage);
@@ -84,6 +90,9 @@ var buffer: string;
     x     : kPageList;
     flags : kSomeFlags;
 begin
+{    if storage.select_hive('.titles.enabled').search(message.channel) = '' then
+        exit;} // for absolutely no reason, this only works on my server and not soylent's
+
   { We don't want to ejaculate titles whenever someone seds or .topics or something.
     Also aqu4 has $title so we want to ignore that, too, although we could detect
     what it's doing first. }
@@ -96,12 +105,13 @@ begin
     if  (TextPos('bender', message.user.user) = 0) and (TextPos('sedbot', message.user.user) = 0)
     and (TextPos('exec', message.user.user) = 0) and (TextPos('ciri', message.user.user) = 0)
     and (TextPos('aqu4', message.user.user) = 0) and (TextPos('supybot', message.user.user) = 0)
-    and not(message.message[1] in ['.','!','$', '~']) then begin
+    and not(message.message[1] in ['.','!','$', '~']) then
+    begin
         x:= getTitles(message.message, flags);
-        writeln(length(x), ' titles returned');
+
         if length(x) > 0 then
             for z:= 0 to high(x) do
-                if x[z].title <> '' then bot.say(message.channel, '^ ' + mIRCcolor(clGreen) + clip_text(x[z].title, 480) + mIRCcolor(clNone))
+                if x[z].title <> '' then bot.say(message.channel, '^ ' + mIRCcolor(clGreen) + clip_text(x[z].title, 480) + mIRCcolor(clNone));
     end
 end;
 
@@ -113,12 +123,8 @@ begin
     bot.me.nick    := h.items['me.nick'];
     bot.me.realName:= h.items['me.realname'];
     prefix         := h.items['prefix'][1];
-end;
-
-procedure tMonopolyBot.switchTitles(active: boolean);
-begin
-    { maybe do a check and write a message later }
-    doTitles:= active;
+    save_ticker_max:= strToInt(h.items['save_ticker_max']);
+    logFile        := h.items['logfile'];
 end;
 
 procedure tMonopolyBot.handleInvite(message: kIrcMessage);
@@ -167,9 +173,7 @@ begin
                    while z < l do begin
                        a:= storage.content[ExtractSubstr(buffer, z, [' ']), p];
                        if a <> '' then bot.say(message.channel, clip_text(a, 360))
-                   end;
-                   if storage.lastError <> '' then
-                       reply(storage.lastError)
+                   end
                end;
         'del': if authed then
                begin
@@ -177,8 +181,7 @@ begin
                    begin
                        storage.del_cell(ExtractSubstr(buffer, z, [' ']))
                    end;
-                   if storage.lastError <> '' then
-                       reply(storage.lastError)
+                   k
                end;
 
         '!clear': if authed then
@@ -186,8 +189,6 @@ begin
                      storage.clear_hive(buffer);
                    if storage.lastError = '' then
                        k
-                   else
-                       reply(storage.lastError)
                  end;
 
 
@@ -207,7 +208,7 @@ begin
                            h:= storage.select_hive(a);
                            if h <> nil then
                                reply(a + ': ' + intToStr(storage.select_hive(a).getSize)
-                                                          + ' in ' + intToStr(storage.select_hive(a).count) + ' cells')
+                                                          + ' bytes in ' + intToStr(storage.select_hive(a).count) + ' cells')
                            else
                                reply('There is no ' + a + '!')
                        end
@@ -305,11 +306,8 @@ begin
                               reply('Requires two parameters: old_name new_name')
                       end
                   end;
-        'save'  : if authed then
-                  begin
-                      storage.save(storage.theDirectory);
-                      k
-                  end;
+        else
+            bot.say(message.channel, storage.content['aliases/' + command, cp_No_touch]);
     end;
     if storage.lastError <> '' then begin
         writeln(stdErr, '==Hive error: ', storage.lastError);
@@ -417,14 +415,11 @@ begin
                            bot.setMode(message.channel, '-v', message.user.nick)
                        else
                            bot.setMode(message.channel, '-v', pars);
-        'source' : //bot.say(message.channel, 'Source: ' + sourceLink);
-                   bot.sayAction(message.channel, 'is ashamed of the source');
-
         'nick'   : if authed and (pars <> '') then bot.nick(pars);
         'help'   : if pars = '' then
-                       bot.say(message.channel, '[join; part; invite] [say; me,do; r; rdo] and if you''re special, then [sayto; doto] [(-)o; (-)v] [topic] [nick] [reload; restart; :q!]. Also, ask about hives!')
+                       bot.say(message.channel, storage.content['.help/.', cp_No_touch])
                    else if lowerCase(pars) = 'hives' then
-                       bot.say(message.channel, 'Hive commands: get, set, show, new, dump, list, stats');
+                       bot.say(message.channel, storage.content['.help/' + pars, cp_No_touch]);
         else
             do_hive_command(cmd, pars, message, authed);
     end;
@@ -455,15 +450,15 @@ begin
     if (message.user.user = 'NickServ') and (message.user.host = 'services.') then
     begin
         if TextPos('welcome', message.message) > 0 then
-        begin
             bot.say(message.user.nick, 'identify '
                   + storage.content['.config/nickserv.user', cp_No_touch] + ' '
-                  + storage.content['.config/nickserv.pass', cp_No_touch]);
-            writeln('Identified')
-        end
+                  + storage.content['.config/nickserv.pass', cp_No_touch])
         else
         if TextPos('you are now identified', message.message) > 0 then
-            if storage.select_hive('.channels').Count > 0 then bot.join(kList_hive(storage.select_hive('.channels')).content)
+        begin
+            if storage.select_hive('.channels').Count > 0 then bot.join(kList_hive(storage.select_hive('.channels')).content);
+            writeln('Identified')
+        end
     end
 end;
 
@@ -505,7 +500,7 @@ writeln('Checking options');
     end;
 writeln('Instantiating');
     storage            := kHive_cluster.Create(true);
-    storage.load('/home/toobee/monopolybot/hives/');
+    storage.load('/home/toobee/monopoly.bot/hives/');
     url_title4.hive_cluster:= storage;
 
     save_ticker        := 0;
@@ -516,6 +511,7 @@ writeln('Instantiating');
     bot.OnKick         := @handleKick;
     bot.onConnect      := @handleConnect;
     bot.onMessage      := @handleMessage;
+    bot.onNick         := @handleNick;
     bot.onNotice       := @handleNotice;
     bot.onSocket       := @handleSocket;
     bot.onInvite       := @handleInvite;
@@ -533,7 +529,6 @@ writeln('Instantiating');
     try
 writeln('Connecting');
     bot.connect(storage.content['.config/server.host', cp_No_touch], strToInt(storage.content['.config/server.port', cp_No_touch]));
-//    bot.connect('irc.sylnt.us', 6667);
     mode:= bmStopped;
 
 writeln('Waiting on server');

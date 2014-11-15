@@ -186,7 +186,8 @@ end;
 
 procedure kIRCclient.say(channel, message: string);
 begin
-    writeString('PRIVMSG ' + channel + ' :' + message)
+    if message <> '' then
+        writeString('PRIVMSG ' + channel + ' :' + message)
 end;
 
 procedure kIRCclient.sayAction(channel, message: string);
@@ -285,7 +286,9 @@ begin
 
     uMessage.user   := string2user(giver);
     uMessage.channel:= ExtractSubstr(message, z, [' ']);
+    y:= z;
     z:= PosEx(':', message, z) + 1;
+
     uMessage.message:= message[z..length(message)];
 
     if uMessage.channel = me.nick then // Need this for PMs to work
@@ -297,26 +300,33 @@ begin
         'PRIVMSG': if onMessage <> nil then
                       onMessage(uMessage);
         'JOIN'   : begin
-                       uMessage.channel:=uMessage.channel[2..length(uMessage.channel)];
+                       y:= pos('JOIN', message) + 4;
+                       while (message[y] in [' ', ':']) and (y < length(message)) do
+                           inc(y);
+                       uMessage.channel:=message[y..length(message)];
+                       writeln('::', uMessage.message, ' || ', uMessage.channel);
                        if onJoin <> nil then
                            onJoin(uMessage)
                    end;
         'PART'   : if onPart <> nil then
-                      onPart(uMessage);
+                       onPart(uMessage);
         'TOPIC'  : if onTopic <> nil then
-                      onTopic(uMessage);
+                       onTopic(uMessage);
         'INVITE' : if onInvite <> nil then
-                      onInvite(uMessage);
+                       onInvite(uMessage);
         'NOTICE' : if onNotice <> nil then
-                      onNotice(uMessage);
+                       onNotice(uMessage);
         'NICK'   : begin
-                       if uMessage.user.nick = me.nick then
-                           me.nick:= uMessage.message;
+                       y:= pos('NICK', message) + 4;
+                       while (message[y] in [' ', ':']) and (y < length(message)) do
+                           inc(y);
+                       uMessage.message:=message[y..length(message)];
                        if onNick <> nil then
-                           onNick(uMessage);
+                       onNick(uMessage);
                    end;
+
         'PONG'   : if onPong <> nil then // Does this exist? Or does it work like PING?
-                      onPong;
+                       onPong;
     end
 end;
 

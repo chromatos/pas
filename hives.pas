@@ -662,10 +662,10 @@ end;
 procedure kList_hive.to_console;
 var z: integer = 0;
 begin
-    writeln('==== HIVE DUMP ==== (', Name, '; list)');
-    writeln('Permissions: ', SPermissions);
+    writeln('==== HIVE DUMP ==== (', Name, '; list)'#9,
+            'Permissions: ', SPermissions);
     for z:= 0 to content.Count - 1 do
-        writeln(#9, content.Strings[z]);
+        writeln(#9, z, #9, content.Strings[z]);
     writeln('==== END ==== (', Name, '; ', content.count, ' cells)')
 end;
 
@@ -742,8 +742,9 @@ end;
 function kList_hive.search(exactValue: string): string;
 var z: integer;
 begin
-    content.Find(exactValue, z);
-    result:= intToStr(z)
+    if content.Find(exactValue, z) then
+        result:= intToStr(z)
+    else result:= ''
 end;
 
 procedure kList_hive.clear;
@@ -804,7 +805,7 @@ end;
 
 procedure kKeyVal_hive.dump_iteratee(Item: String; const Key: string; var Continue: Boolean);
 begin
-    writeln(#9'KEY: ', key, #9'VALUE: ', Item);
+    writeln(#9, key, #9, Item);
     Continue:= true
 end;
 
@@ -878,8 +879,8 @@ end;
 
 procedure kKeyVal_hive.to_console;
 begin
-    writeln('==== HIVE DUMP ==== (', Name, '; keyval)');
-    writeln('Permissions: ', SPermissions);
+    writeln('==== HIVE DUMP ==== (', Name, '; keyval)'#9,
+            'Permissions: ', SPermissions);
     content.Iterate(@dump_iteratee);
     writeln('==== END ==== (', Name, '; ', content.count, ' cells)')
 end;
