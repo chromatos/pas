@@ -43,7 +43,7 @@ type
       private
         kPermissions           : kHivePermissions;
         cell_type              : kCellType;
-        cell_properties        : kCellProperties;
+        dirty                  : boolean;
 
       protected
         function    kGetItem   (index: string): string;virtual;abstract;
@@ -58,6 +58,12 @@ type
       public
         procedure   add        (index: string; aValue: string);virtual;abstract;
         procedure   del        (index: string);virtual;abstract;
+        procedure   del_byval  (aValue: string);virtual;abstract;
+
+        function    search     (exactValue: string): string;virtual;abstract;
+
+        procedure   clear;virtual;abstract;
+
         function    to_stream  : string;virtual;abstract;
         procedure   from_stream(aStream: string);virtual;abstract;
         procedure   to_console;virtual;abstract;
@@ -80,6 +86,11 @@ type
 
         procedure   add        (index: string; aValue: string);override;
         procedure   del        (index: string);override;
+        procedure   del_byval  (aValue: string);override;
+
+        function    search     (exactValue: string): string;override;
+
+        procedure   clear;override;
 
         function    to_stream  : string;override;
         procedure   from_stream(aStream: string);override;
@@ -92,11 +103,14 @@ type
         function    getSize    : integer;override;
         function    getCount   : integer;override;
       private
-        buffer: string; // because the stupid iterator has to be a method and they
-        aValue: integer;// don't just give a numerically-indexed accessor
-        procedure   iteratee      (Item: String; const Key: string; var Continue: Boolean);
-        procedure   dump_iteratee (Item: String; const Key: string; var Continue: Boolean);
-        procedure   size_iteratee (Item: String; const Key: string; var Continue: Boolean);
+        buffer : string; // because the stupid iterator has to be a method and they
+        buffer2: string; // don't just give a numerically-indexed accessor
+        aValue : integer;
+
+        procedure   iteratee       (Item: String; const Key: string; var Continue: Boolean);
+        procedure   dump_iteratee  (Item: String; const Key: string; var Continue: Boolean);
+        procedure   search_iteratee(Item: String; const Key: string; var Continue: Boolean);
+        procedure   size_iteratee  (Item: String; const Key: string; var Continue: Boolean);
     end;
 
     { kList_hive }
@@ -109,6 +123,11 @@ type
 
         procedure   add        (index: string; aValue: string);override;
         procedure   del        (index: string);override;
+        procedure   del_byval  (aValue: string);override;
+
+        function    search     (exactValue: string): string;override;
+
+        procedure   clear;override;
 
         function    to_stream  : string;override;
         procedure   from_stream(aStream: string);override;
@@ -134,6 +153,11 @@ type
         function  add_list_hive  (name: string; permissions: kHivePermissions): kList_hive;
         function  add_keyval_hive(name: string; permissions: kHivePermissions): kKeyVal_hive;
         function  del_hive       (name: string): boolean;
+        function  clear_hive     (name: string): boolean;
+
+        function  del_cell       (name: string): boolean;
+        function  del_cell_byval (name: string; aValue: string): boolean;
+
         function  select_hive    (name: string): kHive_ancestor;
         function  select_hive    (index: integer): kHive_ancestor;
 
@@ -171,6 +195,29 @@ uses strutils, sha1, kUtils, tanks;
 
 const
     c_ref= '## Error in cell reference: missing ';
+
+function resolve_path(path: string): kKeyValue;
+    var z: integer;
+    begin
+        z:= pos('/', path);
+        if z = 1 then begin      // Allow a '/' at start for 'root' but still
+            PosEx('/', path, z); // require a later '/' to delimit the node levels.
+            if z > 1 then begin
+                path:= path[2..length(path)];
+                dec(z) // Since we nuked the first character.
+            end
+            else
+                z:= 0
+        end;
+        if z > 1 then
+            result.key:= lowerCase(path[1..z-1])
+        else
+            result.key:= '';
+        if z < length(path) then
+            result.value:=path[z+1..length(path)]
+        else
+            result.value:= ''
+    end;
 
 { I have no idea why I made these separate functions. }
 
@@ -249,9 +296,9 @@ end;
 constructor kHive_ancestor.Create(HashObjectList:TFPHashObjectList;const s:shortstring);
 begin
     inherited;
-    cell_properties := [];
-    kPermissions.r  := cp_Helmet;
-    kPermissions.w  := cp_Helmet;
+    dirty         := false;
+    kPermissions.r:= cp_Helmet;
+    kPermissions.w:= cp_Helmet;
 end;
 
 
@@ -274,32 +321,36 @@ end;
 
 function kHive_cluster.add_list_hive(name: string; permissions: kHivePermissions): kList_hive;
 begin
+    name:= lowerCase(name);
     try
         if FindIndexOf(name) = -1 then
         begin
-            result             := kList_hive.Create(self, lowerCase(name));
-            result.cell_type   := ct_StringList;
-            result.kPermissions:= permissions;
-            dirty              := true
+            result                := kList_hive.Create(self, name);
+            result.cell_type      := ct_StringList;
+            result.kPermissions   := permissions;
+            result.dirty          := false;
+            dirty                 := true
         end
     except
-        on EDuplicate do result:= kList_hive(Find(lowerCase(name)))
+        on EDuplicate do result:= kList_hive(Find(name))
     end
 end;
 
 
 function kHive_cluster.add_keyval_hive(name: string; permissions: kHivePermissions): kKeyVal_hive;
 begin
+    name:= lowerCase(name);
     try
         if FindIndexOf(name) = -1 then
         begin
-            result             := kKeyVal_hive.Create(self, lowerCase(name));
-            result.cell_type   := ct_Hashlist;
-            result.kPermissions:= permissions;
-            dirty              := true
+            result                := kKeyVal_hive.Create(self, name);
+            result.cell_type      := ct_Hashlist;
+            result.kPermissions   := permissions;
+            result.dirty          := false;
+            dirty                 := true
         end
     except
-        on EDuplicate do result:= kKeyVal_hive(Find(lowerCase(name)))
+        on EDuplicate do result:= kKeyVal_hive(Find(name))
     end
 end;
 
@@ -324,6 +375,26 @@ begin
         lastError:= 'Dunno what happened. The exceptional hive was "' + name + '"';
     end;
 end;
+
+function kHive_cluster.clear_hive(name: string): boolean;
+begin
+    select_hive(name).clear
+end;
+
+function kHive_cluster.del_cell(name: string): boolean;
+var v: kKeyValue;
+begin
+    v:= resolve_path(name);
+    select_hive(v.key).del(v.value)
+end;
+
+function kHive_cluster.del_cell_byval(name: string; aValue: string): boolean;
+
+begin
+    select_hive(name).del_byval(aValue);
+end;
+
+
 
 function kHive_cluster.select_hive(name: string): kHive_ancestor;
 begin
@@ -433,21 +504,22 @@ begin
 end;
 
 procedure kHive_cluster.save(path: string);
-var z      : dWord;
+var z      : integer;
     buffer : string = '';
     h_class: string;
     y      : kHive_ancestor;
 begin
   { Write out any modified hives }
     for z:= 0 to Count - 1 do
+    begin
         y:= select_hive(z);
-        if cellProp_dirty in y.cell_properties then
+        if y.dirty then
         begin
             string2File(ConcatPaths([path, y.Name + '.hive']), y.to_stream);
-            Exclude(y.cell_properties, cellProp_dirty);
+            y.dirty:= false;
             writeln('Hive saved: ', y.Name)
         end;
-
+    end;
   { Write index if modified }
     if dirty then begin
         for z:= 0 to Count - 1 do
@@ -486,29 +558,6 @@ begin
         for z:= 0 to Count-1 do
             kHive_ancestor(Items[z]).to_console
     end
-end;
-
-function resolve_path(path: string): kKeyValue;
-var z: integer;
-begin
-    z:= pos('/', path);
-    if z = 1 then begin      // Allow a '/' at start for 'root' but still
-        PosEx('/', path, z); // require a later '/' to delimit the node levels.
-        if z > 1 then begin
-            path:= path[2..length(path)];
-            dec(z) // Since we nuked the first character.
-        end
-        else
-            z:= 0
-    end;
-    if z > 1 then
-        result.key:= lowerCase(path[1..z-1])
-    else
-        result.key:= '';
-    if z < length(path) then
-        result.value:=path[z+1..length(path)]
-    else
-        result.value:= ''
 end;
 
 function kHive_cluster.kGetItem(index: string; permission: kRWModes): string;
@@ -596,7 +645,7 @@ begin
 
         content.AddStrings(detank2list(detank(aStream, z)));
 
-        Exclude(cell_properties, cellProp_dirty)
+        dirty:= false;
     end else
         writeln(stdErr, 'Empty hive stream; not loading');
 end;
@@ -654,7 +703,8 @@ end;
 procedure kList_hive.kSetItem(index: string; aValue: string);
 var z: integer;
 begin
-    Include(cell_properties, cellProp_dirty);
+    dirty:= true;
+
     if string_is_numeric(index) then begin
         z:= strToInt(index);
         if (z < content.Count) and (z >= 0) then
@@ -668,7 +718,7 @@ end;
 
 procedure kList_hive.add(index: string; aValue: string);
 begin
-    Include(cell_properties, cellProp_dirty);
+    dirty:= true;
     if (index <> '') and string_is_numeric(index) then
         content.Insert(StrToInt(index), aValue)
     else
@@ -677,9 +727,28 @@ end;
 
 procedure kList_hive.del(index: string);
 begin
-    Include(cell_properties, cellProp_dirty);
+    dirty:= true;
     if string_is_numeric(index) then
         content.Delete(strToInt(index))
+end;
+
+procedure kList_hive.del_byval(aValue: string);
+var z: integer;
+begin
+    if content.Find(aValue, z) then
+        content.Delete(z)
+end;
+
+function kList_hive.search(exactValue: string): string;
+var z: integer;
+begin
+    content.Find(exactValue, z);
+    result:= intToStr(z)
+end;
+
+procedure kList_hive.clear;
+begin
+    content.Clear
 end;
 
 function kList_hive.getCount: integer;
@@ -704,10 +773,10 @@ begin
 
         while z < length(b) do begin
             keyval:= tank2keyvalue(b, z);
-            content.add(keyval.key, keyval.value)
+            Items[keyval.key]:= keyval.value
         end;
 
-        Exclude(cell_properties, cellProp_dirty)
+        dirty:= false
     end
     else
         writeln(stdErr, 'Empty hive stream; not loading')
@@ -739,6 +808,11 @@ begin
     Continue:= true
 end;
 
+procedure kKeyVal_hive.search_iteratee(Item: String; const Key: string; var Continue: Boolean);
+begin
+    continue:= item <> buffer
+end;
+
 procedure kKeyVal_hive.size_iteratee(Item: String; const Key: string;
     var Continue: Boolean);
 begin
@@ -753,20 +827,40 @@ end;
 
 procedure kKeyVal_hive.kSetItem(index: string; aValue: string);
 begin
-    Include(cell_properties, cellProp_dirty);
+    dirty:= true;
     content.Items[index]:= aValue
 end;
 
 procedure kKeyVal_hive.add(index: string; aValue: string);
 begin
-    Include(cell_properties, cellProp_dirty);
+    dirty:= true;
     content.Add(index, aValue)
 end;
 
 procedure kKeyVal_hive.del(index: string);
 begin
-    Include(cell_properties, cellProp_dirty);
+    dirty:= true;
     content.Delete(index)
+end;
+
+procedure kKeyVal_hive.del_byval(aValue: string);
+var
+    g: string;
+begin
+    g:= search(aValue);
+    if g <> '' then
+        content.Delete(g)
+end;
+
+function kKeyVal_hive.search(exactValue: string): string;
+begin
+    buffer:= exactValue;
+    result:= content.Iterate(@search_iteratee)
+end;
+
+procedure kKeyVal_hive.clear;
+begin
+    content.Clear
 end;
 
 function kKeyVal_hive.getCount: integer;

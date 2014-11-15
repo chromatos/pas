@@ -32,27 +32,29 @@ var z: integer = 0;
     y: tStringList;
     x: boolean = false;
 begin
-    y     := kList_hive(hive_cluster.Find('titles.ignore')).content;
+    y:= kList_hive(hive_cluster.Find('.titles.ignore')).content;
     if y.count = 0 then
     begin
         result:= true;
         exit
     end;
     buffer:= lowerCase(buffer);
-//    result:= false;
-//    result:= not contains_any_strings(naughtyList, buffer, true) //then exit else
-    while (z < y.count-1) and (not x) do
+
+    while (z < y.count) and (not x) do
     begin
-        regexpr.ExecRegExpr(y.Strings[z], buffer);
+        x:= regexpr.ExecRegExpr(y.Strings[z], buffer);
         inc(z)
     end;
+    if x then
+        writeln('Ignoring ', buffer);
+
     result:= not x
 end;
 
 //function doRequest(var uri: string; baseName: string; out props: kFileProperties; out buffer: string; out contentType: string; out redirects: byte): kRequestResult;
 function doRequest(var aSite: kpageInfo; baseName: string; out props: kFileProperties): kRequestResult;
-const
-    uaString = 'Mozilla/5.0 (monopoly 2; X11; Linux x86_64; rv:24.7) Gecko/20140911 Firefox/24.7';
+//const
+//    uaString = 'Mozilla/5.0 (netctl; X11; Linux x86_64; rv:24.7) Gecko/20140911 Firefox/24.7';
 var aFile   : tStringList;
     z       : dWord;
     final   : boolean = false;
@@ -68,7 +70,8 @@ begin
             result:= isNothing;
             exit
         end;
-        fpSystem('curl -m 8 -x "http://10.10.9.254:3128" -A "' + uaString + '" -k -s -D ' + baseName + '.head "' + aSite.url + '" > ' + baseName + '.body');
+        fpSystem('curl -m 8 -x "http://10.10.9.254:3128" -A "' + hive_cluster.content['.config/user_agent', cp_No_touch]
+               + '" -k -s -D ' + baseName + '.head "' + aSite.url + '" > ' + baseName + '.body');
         if not (FileExists(baseName + '.head') and FileExists(baseName + '.body')) then begin
             result:= isNotFound;
             break
@@ -118,7 +121,7 @@ begin
 end;
 
 
-procedure fillTitle(aPage: kpageInfo; someFlags: kSomeFlags);
+procedure fillTitle(var aPage: kpageInfo; var someFlags: kSomeFlags);
 const
     a = '/tmp/titlebot.';
 var z            : dWord;
@@ -146,7 +149,6 @@ begin
 
     if ((gtHttp in someFlags) and (TextPos('http:/', aPage.url) = 1)) or ((gtHttps in someFlags) and (TextPos('https:/', aPage.url) = 1)) then
     begin
-        writeln(#9'url: ', aPage.url);
         oldUri := aPage.url;
         writeln('Requesting: ', aPage.url);
         requestResult:= doRequest(aPage, aFile, fileProps);
@@ -234,29 +236,15 @@ begin
     lines := extractURLs(buffer[z+1..length(buffer)]);
     setLength(result, lines.Count);
     if lines.count > 0 then
-        cache     := hive_cluster.select_hive('_titles.cache');
-        ignorables:= kList_hive(hive_cluster.select_hive('_titles.ignore')).content;
+    begin
+        cache     := hive_cluster.select_hive('.titles.cache');
 
-        for z:= 0 to lines.count-1 do begin
-            aPage.url        := lines.Strings[x];
+        for z:= 0 to lines.count-1 do
+        begin
+            aPage.url        := lines.Strings[z];
             aPage.title      := '';
             aPage.description:= '';
             aPage.redirects  := 0;
-
-          { Check for ignorables }
-            y:= 0;
-            hasTheTitle:= false;
-            if ignorables.Count > 0 then
-                while (not hasTheTitle) and (y < ignorables.Count) do
-                begin
-                    hasTheTitle:= regexpr.ExecRegExpr(ignorables[y], lines[z]);
-                    inc(y);
-                end;
-                if hasTheTitle then
-                begin
-                    writeln('Ignoring url: ', lines[z]);
-                    break
-                end;
 
           { Check for cache }
             oldUri:= cache.items[aPage.url]; // variable_reuse++ # for naughtiness
@@ -268,18 +256,34 @@ begin
                 else
                 begin
                     if MinutesBetween(aPage.refreshed, now) > 10 then // refresh cache
-                        fillTitle(aPage, someFlags);
+                        fillTitle(aPage, someFlags)
+                    else
+                        writeln('Cache was recent for ', aPage.url);
+
                     aPage.last_emitted:= now;
-                    cache.items[aPage.url]:= pageInfo2tank(aPage)
+                    if aPage.title <> '' then
+                    begin
+                        cache.items[aPage.url]:= pageInfo2tank(aPage);
+                        result[x]:= aPage;
+                        inc(x)
+                    end
                 end
             end
             else
             begin
                 fillTitle(aPage, someFlags);
-                aPage.last_emitted:= now;
-                cache.items[aPage.url]:= pageInfo2tank(aPage)
+                if aPage.title <> '' then
+                begin
+                    aPage.last_emitted:= now;
+                    cache.items[aPage.url]:= pageInfo2tank(aPage);
+                    result[x]:= aPage;
+                    inc(x)
+                end
             end
-        end
+        end;
+    setLength(result, x)
     end
+end
+
 ;end. // the compiler suddenly needs a semicolon here
 

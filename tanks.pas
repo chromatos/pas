@@ -93,7 +93,7 @@ var z              : integer;
 begin
     l:= length(buffer);
 
-    if l < offset + 4 then
+    if l < offset + 3 then
         raise EStreamError.Create(e_short);
 
     z:= offset;

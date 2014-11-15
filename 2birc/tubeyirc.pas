@@ -169,7 +169,7 @@ end;
 destructor kIRCclient.destroy;
 begin
     if theSocket <> nil then
-        theSocket.Free;
+        theSocket.Free;  thesocket.getRootSock;
     channels.Free;
     inherited
 end;
@@ -288,9 +288,6 @@ begin
     z:= PosEx(':', message, z) + 1;
     uMessage.message:= message[z..length(message)];
 
-    if word_is_present(me.nick, uMessage.message) then
-        uMessage.flags:= uMessage.flags + [mfHighlight];
-
     if uMessage.channel = me.nick then // Need this for PMs to work
         uMessage.channel:= uMessage.user.nick;
 
@@ -299,24 +296,19 @@ begin
                       onKick(uMessage);
         'PRIVMSG': if onMessage <> nil then
                       onMessage(uMessage);
-        'JOIN'   : if onJoin <> nil then
-                      onJoin(uMessage);
+        'JOIN'   : begin
+                       uMessage.channel:=uMessage.channel[2..length(uMessage.channel)];
+                       if onJoin <> nil then
+                           onJoin(uMessage)
+                   end;
         'PART'   : if onPart <> nil then
                       onPart(uMessage);
         'TOPIC'  : if onTopic <> nil then
                       onTopic(uMessage);
         'INVITE' : if onInvite <> nil then
                       onInvite(uMessage);
-        'NOTICE' : begin
-                       if (uMessage.user.nick = nickServNick) and (identString <> '') and (not haveIdentified) then begin
-                           say(nickServNick, 'identify ' + identString);
-                           HaveIdentified:= true;
-                           writeln('Identified');
-                           if channels.Count > 0 then join(channels)
-                       end;
-                       if onNotice <> nil then
-                           onNotice(uMessage)
-                   end;
+        'NOTICE' : if onNotice <> nil then
+                      onNotice(uMessage);
         'NICK'   : begin
                        if uMessage.user.nick = me.nick then
                            me.nick:= uMessage.message;
