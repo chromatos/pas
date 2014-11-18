@@ -15,6 +15,9 @@ uses
   url_title4, textExtractors,
   hives;
 
+const
+    hive_root = '/home/toobee/monopoly.bot/hives/';
+
 type
     kBotMode = (bmStopped, bmRunning, bmRestarting);
 
@@ -24,6 +27,9 @@ type
         bot     : kIRCclient;
         procedure doCommand       (message: kIrcMessage);
         procedure do_hive_command (command, buffer: string; message: kIrcMessage; authed: boolean);
+
+        function  doGrab          (who: string): boolean; // Returns true if there was a grabbable quote
+        procedure doKarma         (message: kIrcMessage);
 
         procedure handleInvite    (message: kIrcMessage);
         procedure handleMessage   (message: kIrcMessage);
@@ -63,8 +69,10 @@ var
 procedure tMonopolyBot.handleJoin(message: kIrcMessage);
 begin                                       writeln(storage.select_hive('.channels').search(message.channel));
     if message.user.nick = bot.me.nick then
+    begin
         if storage.select_hive('.channels').search(message.channel) = '' then
             storage.select_hive('.channels').add('-', message.channel)
+    end
     else
     if (message.user.host = '0::1') or (message.user.nick = 'crutchy') or (TextPos('Soylent/Staff/', message.user.host) = 1) then
         bot.setMode(message.channel, '+v', message.user.nick);
@@ -89,6 +97,7 @@ var buffer: string;
     z     : dWord;
     x     : kPageList;
     flags : kSomeFlags;
+    caret : array[false..true] of string = ('^', '"');
 begin
 {    if storage.select_hive('.titles.enabled').search(message.channel) = '' then
         exit;} // for absolutely no reason, this only works on my server and not soylent's
@@ -111,7 +120,7 @@ begin
 
         if length(x) > 0 then
             for z:= 0 to high(x) do
-                if x[z].title <> '' then bot.say(message.channel, '^ ' + mIRCcolor(clGreen) + clip_text(x[z].title, 480) + mIRCcolor(clNone));
+                if x[z].title <> '' then bot.say(message.channel, caret[x[z].cached] + ' ' + mIRCcolor(clGreen) + clip_text(x[z].title, 480) + mIRCcolor(clNone));
     end
 end;
 
@@ -285,9 +294,10 @@ begin
                           s:= split(' ', buffer);
                           if s.Count = 1 then
                           begin
-                              a:= intToStr(storage.select_hive(s[0]).count);
+                              //a:= intToStr(storage.select_hive(s[0]).count);
                               if storage.del_hive(s[0]) then
-                                  reply('You just killed ' + a + 'bees')
+                                  k
+//                                  reply('You just killed ' + a + 'bees')
                           end
                           else
                               reply('Requires exactly one parameters: hive_name')
@@ -315,12 +325,69 @@ begin
     end
 end;
 
+function tMonopolyBot.doGrab(who: string): boolean;
+begin
+
+end;
+
+procedure tMonopolyBot.doKarma(message: kIrcMessage);
+var z   : integer = 3;
+    l   : integer;
+    what: string = '';
+    why : string = '';
+    b   : string = '';
+    up  : boolean = false;
+    x   : tStringList;
+begin
+    l   := length(message.message);
+    up  := message.message[1] = '+';
+    what:= ExtractSubstr(message.message, z, [' ']);
+
+    if z < l then
+        why:= message.message[z..l];
+
+    z:= StrToIntDef(storage.content['karma/' + what, cp_Helmet], 0);
+    if up then
+    begin
+        inc(z);
+        b:= 'up'
+    end
+    else
+    begin
+        dec(z);
+        b:= 'down';
+    end;
+    inc(z);
+    storage.content['karma/' + what, cp_Helmet]:= intToStr(z);
+
+    x:= split(#9, storage.content['karma.who.' + b + '/' + what, cp_Helmet]);
+    x.Sorted:= true;
+    x.Duplicates:= dupIgnore;
+    x.Add(message.user.nick);
+    storage.content['karma.who.' + b + '/' + what, cp_Helmet]:= join_stringList(#9, x);
+    x.free;
+
+    if why <> '' then
+    begin
+        x:= split(#9, storage.content['karma.why.' + b + '/' + what, cp_Helmet]);
+        x.Sorted:= true;
+        x.Duplicates:= dupIgnore;
+        x.Add(why);
+        storage.content['karma.why.' + b + '/' + what, cp_Helmet]:= join_stringList(#9, x);
+        x.free
+    end;
+
+    bot.say(message.channel, 'Karma - ' + what + ': ' + intToStr(z))
+end;
+
 procedure tMonopolyBot.doCommand(message: kIrcMessage);
-var cmd,
-    pars  : string;
-    stuff : string;
-    z     : integer;
-    y     : integer;
+var cmd   : string  = '';
+    pars  : string  = '';
+    stuff : string  = '';
+    stuff2: string  = '';
+    z     : integer = 0;
+    y     : integer = 0;
+    l     : integer = 0;
     authed: boolean = false;
 begin
   { for authorization, we're assuming vhosts will be checked before being authorized
@@ -329,9 +396,11 @@ begin
         authed:= true;
 
     z:= pos(' ', message.message);
-    if (z > 1) and (z < length(message.message)) then begin
+    if (z > 1) and (z < length(message.message)) then
+    begin
         cmd := LowerCase(message.message[2..z-1]);
-        pars:= message.message[z+1..length(message.message)]
+        pars:= message.message[z+1..length(message.message)];
+        l   := length(pars)
     end else
         cmd:= LowerCase(Trim(message.message[2..length(message.message)]));
 
@@ -370,7 +439,7 @@ begin
                    end;
         'kick'   : if authed and (pars <> '') then begin
                        stuff:= ExtractSubstr(pars, z, [' ']);
-                       bot.kick(stuff, pars[z..Length(pars)]);
+                       bot.kick(stuff, pars[z..l]);
                    end;
         's',
         'say'    : begin if pars <> '' then
@@ -380,55 +449,110 @@ begin
                            end;
                            bot.say(message.channel, pars);
                        end;
+        'grab'   : if pars <> '' then
+                   begin
+                       if doGrab(pars) then
+                           bot.say(message.channel, ':D')
+                       else
+                           bot.say(message.channel, ':(')
+                   end;
         'do',
         'me'     : if pars <> '' then bot.sayAction(message.channel, pars);
-        'invite' : bot.invite(ExtractSubstr(pars, z, [' ']), pars[z..length(pars)]);
+        'invite' : bot.invite(ExtractSubstr(pars, z, [' ']), pars[z..l]);
         'r'      : if pars <> '' then bot.say(message.channel, reverse(pars));
         'rdo'    : if pars <> '' then bot.sayAction(message.channel, reverse(pars));
-        'sayto'  : if authed and (pars <> '') then begin
+        'sayto'  : if authed and (pars <> '') then
+                   begin
                        stuff:= ExtractSubstr(pars, z, [' ']);
-                       bot.say(stuff, pars[z..length(pars)])
+                       bot.say(stuff, pars[z..l])
                    end;
-        'doto'   : if authed and (pars <> '') then begin
+        'doto'   : if authed and (pars <> '') then
+                   begin
                        stuff:= ExtractSubstr(pars, z, [' ']);
-                       bot.sayAction(stuff, pars[z..length(pars)])
+                       bot.sayAction(stuff, pars[z..l])
                    end;
         'topic'  : if authed and (pars <> '') then
                        bot.setTopic(message.channel, pars);
         'o'      : if authed then
+                   begin
                        if pars = '' then
                            bot.setMode(message.channel, '+o', message.user.nick)
                        else
-                           bot.setMode(message.channel, '+o', pars);
+                           bot.setMode(message.channel, '+o', pars)
+                   end;
         '-o'      : if authed then
+                    begin
                        if pars = '' then
                            bot.setMode(message.channel, '-o', message.user.nick)
                        else
-                           bot.setMode(message.channel, '-o', pars);
+                           bot.setMode(message.channel, '-o', pars)
+                    end;
         'v'      : if authed then
+                   begin
                        if pars = '' then
                            bot.setMode(message.channel, '+v', message.user.nick)
                        else
-                           bot.setMode(message.channel, '+v', pars);
+                           bot.setMode(message.channel, '+v', pars)
+                   end;
         '-v'      : if authed then
+                    begin
                        if pars = '' then
                            bot.setMode(message.channel, '-v', message.user.nick)
                        else
-                           bot.setMode(message.channel, '-v', pars);
+                           bot.setMode(message.channel, '-v', pars)
+                    end;
         'nick'   : if authed and (pars <> '') then bot.nick(pars);
-        'help'   : if pars = '' then
-                       bot.say(message.channel, storage.content['.help/.', cp_No_touch])
-                   else if lowerCase(pars) = 'hives' then
-                       bot.say(message.channel, storage.content['.help/' + pars, cp_No_touch]);
+        'help'   : begin
+                       if pars = '' then
+                           bot.say(message.channel, storage.content['.help/.', cp_Plebes])
+                       else
+                           bot.say(message.channel, storage.content['.help/' + pars, cp_Plebes]);
+                   end;
+        'karma'  : if pars <> '' then
+                   begin
+                        stuff:= storage.content['karma/' + pars, cp_Plebes];
+                        if stuff <> '' then
+                            bot.say(message.channel, 'Karma - ' + pars + ': ' + stuff)
+                        else
+                            bot.say(message.channel, 'No karma');
+                   end;
+        'who'    : if pars <> '' then
+                   begin
+                       stuff:= lowerCase(ExtractSubstr(pars, z, [' ']));
+                       if ((stuff = 'up') or (stuff = 'down')) and (z < l) then
+                       begin
+                           stuff:= storage.content['karma.who.'+stuff+'/' + pars[z..l], cp_Plebes];
+                           if stuff <> '' then
+                               bot.say(message.channel, pars[z..l] + ': '
+                                                     + join_stringList(', ', split(#9, stuff)))
+                           else
+                               bot.say(message.channel, 'Nobody');
+                       end
+                   end;
+        'why'    : if pars <> '' then
+                   begin
+                       stuff:= lowerCase(ExtractSubstr(pars, z, [' ']));
+                       if ((stuff = 'up') or (stuff = 'down')) and (z < l) then
+                       begin
+                           stuff:= storage.content['karma.why.'+stuff+'/' + pars[z..l], cp_Plebes];
+                           if stuff <> '' then
+                               bot.say(message.channel, pars[z..l] + ': '
+                                                       + join_stringList(', ', split(#9, stuff)))
+                           else
+                               bot.say(message.channel, 'No reason');
+                       end
+                   end;
         else
             do_hive_command(cmd, pars, message, authed);
-    end;
+    end
 end;
 
 procedure tMonopolyBot.handleMessage(message: kIrcMessage);
 var auth: boolean = false;
+    l   : integer;
 begin
     message.message:= stripSomeControls(message.message);
+    l:= length(message.message);
 
     if (length(message.message) > 1) and (message.message[1] = prefix) then
         doCommand(message)
@@ -439,6 +563,9 @@ begin
         else
             bot.say('exec', 'nuh uh!')
     end
+    else
+    if ((message.message[1..2] = '++') or (message.message[1..2] = '--')) and (l > 2) then
+        doKarma(message)
     else
         if length(message.message) > 5 then showTitles(message);
     if (TextPos('bacon--', message.message) = 1) and (message.channel = '##') then
@@ -500,13 +627,24 @@ writeln('Checking options');
     end;
 writeln('Instantiating');
     storage            := kHive_cluster.Create(true);
-    storage.load('/home/toobee/monopoly.bot/hives/');
+    if not FileExists(hive_root) then
+    begin
+        writeln(stderr, 'MISSING HIVE, YO!');
+        halt(-10000)
+    end;
+    storage.load(hive_root);
     url_title4.hive_cluster:= storage;
 
     save_ticker        := 0;
 
     bot                := kIRCclient.create;
     doConfig;
+
+    try
+        iCantStrings:= kList_hive(storage.select_hive('.icant')).content;
+    except
+        iCantStrings:= tStringList.Create;
+    end;
 
     bot.OnKick         := @handleKick;
     bot.onConnect      := @handleConnect;

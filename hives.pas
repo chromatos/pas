@@ -57,8 +57,8 @@ type
         constructor Create     (HashObjectList:TFPHashObjectList;const s:shortstring);
       public
         procedure   add        (index: string; aValue: string);virtual;abstract;
-        procedure   del        (index: string);virtual;abstract;
-        procedure   del_byval  (aValue: string);virtual;abstract;
+        function    del        (index: string): boolean;virtual;abstract;
+        function    del_byval  (aValue: string): boolean;virtual;abstract;
 
         function    search     (exactValue: string): string;virtual;abstract;
 
@@ -85,8 +85,8 @@ type
         procedure   kSetItem   (index: string; aValue: string);override;
 
         procedure   add        (index: string; aValue: string);override;
-        procedure   del        (index: string);override;
-        procedure   del_byval  (aValue: string);override;
+        function    del        (index: string): boolean;override;
+        function    del_byval  (aValue: string): boolean;override;
 
         function    search     (exactValue: string): string;override;
 
@@ -122,6 +122,37 @@ type
         procedure   kSetItem   (index: string; aValue: string);override;
 
         procedure   add        (index: string; aValue: string);override;
+        function    del        (index: string): boolean;override;
+        function    del_byval  (aValue: string): boolean;override;
+
+        function    search     (exactValue: string): string;override;
+
+        procedure   clear;override;
+
+        function    to_stream  : string;override;
+        procedure   from_stream(aStream: string);override;
+      public
+        constructor Create     (HashObjectList:TFPHashObjectList;const s:shortstring);
+      public
+        procedure   to_console;override;
+        function    getSize    : integer;override;
+        function    getCount   : integer;override;
+      protected
+        function    getRandom  : string;override;
+    end;
+
+
+    { kMultiList_hive }
+
+    { kDir_hive }
+
+{    kDir_hive = class(kHive_ancestor)
+        content: TFPHashObjectList;
+
+        function    kGetItem   (index: string): string;override;
+        procedure   kSetItem   (index: string; aValue: string);override;
+
+        procedure   add        (index: string; aValue: string);override;
         procedure   del        (index: string);override;
         procedure   del_byval  (aValue: string);override;
 
@@ -139,7 +170,7 @@ type
         function    getCount   : integer;override;
       protected
         function    getRandom  : string;override;
-    end;
+    end;}
 
 
     { kHive_cluster }
@@ -377,21 +408,36 @@ begin
 end;
 
 function kHive_cluster.clear_hive(name: string): boolean;
+var x: kHive_ancestor;
 begin
-    select_hive(name).clear
+    x:= select_hive(name);
+    if x <> nil then
+        x.clear
+    else
+        lastError:= 'Couldn''t clear hive "' + name + '"'
 end;
 
 function kHive_cluster.del_cell(name: string): boolean;
 var v: kKeyValue;
+    x: kHive_ancestor;
 begin
-    v:= resolve_path(name);
-    select_hive(v.key).del(v.value)
+    lastError:= '';
+    result   := false;
+    v        := resolve_path(name);
+    x        := select_hive(v.key);
+
+    if x <> nil then
+        if x.del(v.value) then
+            result:= true
+    else
+        lastError:= 'Couldn''t delete cell "' + name + '"'
 end;
 
 function kHive_cluster.del_cell_byval(name: string; aValue: string): boolean;
 
 begin
-    select_hive(name).del_byval(aValue);
+    if not select_hive(name).del_byval(aValue) then
+        lastError:= 'Couldn''t delete cell "' + name + '"'
 end;
 
 
@@ -725,18 +771,31 @@ begin
         content.Add(aValue)
 end;
 
-procedure kList_hive.del(index: string);
+function kList_hive.del(index: string): boolean;
+var z: integer;
 begin
-    dirty:= true;
+    result:= false;
     if string_is_numeric(index) then
-        content.Delete(strToInt(index))
+    begin
+        z:= StrToInt(index);
+        if (z > 0) and (z < content.Count) then begin
+            content.Delete(z);
+            result:= true;
+            dirty := true
+        end
+    end
 end;
 
-procedure kList_hive.del_byval(aValue: string);
+function kList_hive.del_byval(aValue: string): boolean;
 var z: integer;
 begin
     if content.Find(aValue, z) then
-        content.Delete(z)
+    begin
+        content.Delete(z);
+        result:= true
+    end
+    else
+        result:= false
 end;
 
 function kList_hive.search(exactValue: string): string;
@@ -838,19 +897,31 @@ begin
     content.Add(index, aValue)
 end;
 
-procedure kKeyVal_hive.del(index: string);
+function kKeyVal_hive.del(index: string): boolean;
 begin
     dirty:= true;
-    content.Delete(index)
+    if content.Find(index) <> nil then
+    begin
+        content.Delete(index);
+        dirty := true;
+        result:= true
+    end
+    else
+        result:= false
 end;
 
-procedure kKeyVal_hive.del_byval(aValue: string);
-var
-    g: string;
+function kKeyVal_hive.del_byval(aValue: string): boolean;
+var g: string;
 begin
     g:= search(aValue);
     if g <> '' then
-        content.Delete(g)
+    begin
+        content.Delete(g);
+        dirty := true;
+        result:= true
+    end
+    else
+        result:= false
 end;
 
 function kKeyVal_hive.search(exactValue: string): string;

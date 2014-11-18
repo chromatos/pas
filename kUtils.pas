@@ -25,6 +25,7 @@ function  splitByType         (yourString: string; skipWhiteSpace: boolean = tru
 
 function  split               (delimiter: char; yourString: string): tStringList; // These are unnecessary because
 function  join_stringList     (delimiter: char; stringList: tStringList): string; // we're using tStringList now.
+function  join_stringList     (delimiter: string; stringList: tStringList): string;
 
 function  split_by_sequence   (sequence, buffer: string): tStringList;
 
@@ -377,16 +378,15 @@ end;
 function split(delimiter: char; yourString: string): tStringList;
 var z,
     y: integer;
+    l: integer;
 begin
-//    z:= 0;
-//    y:= 1;
+    z:= 1;
     result              := tStringList.Create;
-    result.Delimiter    := delimiter;
-    result.DelimitedText:= yourString;
-{    while z <= length(yourString) do
-    begin
-        inc(z);
-        if yourString[z] in [delimiter] then inc(y)
+
+    l:= length(yourString);
+    while z < l do
+        result.Append(ExtractSubstr(yourString, z, [delimiter]));
+{        if yourString[z] in [delimiter] then inc(y)
     end;
     if y > 1 then
     begin
@@ -530,6 +530,16 @@ begin
             join_stringList:= join_stringList + delimiter + stringList.Strings[z]
 end;
 
+function join_stringList(delimiter: string; stringList: tStringList): string;
+{ This is similar to using stringList.DelimitedText but we append, otherwise we
+  should probably just call delimitedText or just use it instead. Whatever. }
+var z: dWord;
+begin
+    join_stringList:= stringList.Strings[0];
+    if stringList.Count > 1 then
+        for z:= 1 to stringList.Count-1 do
+            join_stringList:= join_stringList + delimiter + stringList.Strings[z]
+end;
 
 { Steal underpants; ?; Profit! }
 

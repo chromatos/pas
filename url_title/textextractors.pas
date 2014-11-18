@@ -41,6 +41,7 @@ type
         refreshed,
         last_emitted: TDate;
         redirects   : word;
+        cached      : boolean;
     end;
 
     kPageList = array of kpageInfo;
@@ -71,17 +72,23 @@ function mIRCcolor            (color: tColor): string;
 function tank2pageInfo        (buffer: string): kpageInfo;
 function pageInfo2tank        (page: kpageInfo): string;
 
+
+var iCantStrings: tStringList;
+
+function iCant(): string;
+
+
 implementation
 uses strutils, kUtils, urlStuff;
 const
     nothing_Error = 'nothing for you to see here';
-var iCantStrings: tStringList;
 
 function iCant(): string;
 var z: dWord;
 begin
     result:= iCantStrings.Strings[Random(iCantStrings.Count-1)]
 end;
+
 
 function cleanHTMLForIRC(buffer: string): string;
 begin
@@ -360,7 +367,7 @@ begin
         z:= PosEx('<div id="comment_', info.content, z);
         z:= PosEx('>', info.content, z) + 1;
 
-        info.title:= reduce_white_space(stripBlockQuotes(cleanHTMLForIRC(extract_subStr(info.content, z, '</div>'))))
+        info.description:= reduce_white_space(stripBlockQuotes(cleanHTMLForIRC(extract_subStr(info.content, z, '</div>'))))
     end
 end;
 
@@ -483,7 +490,7 @@ begin
                 extract_subStr(info.content, z, 'content="');
                 z:= PosEx('"', info.content, z) + 1;
 
-                info.description:= ': ' + cleanHTMLForIRC(ExtractSubstr(info.content, z, ['"']))
+                info.description:= cleanHTMLForIRC(ExtractSubstr(info.content, z, ['"']))
             end
         end
     end
@@ -523,8 +530,6 @@ begin
     end;
     result:= buffer
 end;
-
-
 
 end.
 

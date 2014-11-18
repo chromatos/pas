@@ -221,11 +221,17 @@ var z            : dWord;
     requestResult: kRequestResult;
     hasTheTitle  : boolean;
     cache        : kHive_ancestor;
+    cache_timeout: dWord = 20;
+    emit_timeout : dWord = 10;
     ignorables   : tStringList;
 begin
-  { A little hackishness. This was the only way loading files would work before
-    I figured out files don't work well in global space. I'm not going to change
-    it now, at least until total rewrite. }
+    oldUri:= hive_cluster.content['.config/title.cache.timeout', cp_No_touch];
+    if oldUri <> '' then
+        cache_timeout:= strToInt(oldUri);
+
+    oldUri:= hive_cluster.content['.config/title.emit.timeout', cp_No_touch];
+    if oldUri <> '' then
+        emit_timeout:= strToInt(oldUri);
 
   { Oh yeah, the real hack is curl --> files --> here instead of using pipes or
     learning to https. }
@@ -242,6 +248,7 @@ begin
         for z:= 0 to lines.count-1 do
         begin
             aPage.url        := lines.Strings[z];
+            aPage.cached     := false;
             aPage.title      := '';
             aPage.description:= '';
             aPage.redirects  := 0;
@@ -251,14 +258,20 @@ begin
             if oldUri <> '' then
             begin
                 aPage:= tank2pageInfo(oldUri);
-                if MinutesBetween(aPage.last_emitted, now) < 5 then // keep from amplifying
+                if MinutesBetween(aPage.last_emitted, now) < emit_timeout then // keep from amplifying
                     writeln('Too soon! (', lines[z], ')')           // repetitive-link flood
                 else
                 begin
-                    if MinutesBetween(aPage.refreshed, now) > 10 then // refresh cache
-                        fillTitle(aPage, someFlags)
+                    if MinutesBetween(aPage.refreshed, now) > cache_timeout then // refresh cache
+                    begin
+                        fillTitle(aPage, someFlags);
+                        aPage.cached:= false;
+                    end
                     else
-                        writeln('Cache was recent for ', aPage.url);
+                    begin
+                        aPage.cached:= true;
+                        writeln('Cache was recent for ', aPage.url)
+                    end;
 
                     aPage.last_emitted:= now;
                     if aPage.title <> '' then
@@ -272,6 +285,7 @@ begin
             else
             begin
                 fillTitle(aPage, someFlags);
+                aPage.cached:= false;
                 if aPage.title <> '' then
                 begin
                     aPage.last_emitted:= now;
