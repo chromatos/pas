@@ -9,7 +9,8 @@
 
   Examples:
       {17:Example buffer}
-        ^ Buffer length ^ decorative only because we already know where it ends
+        ^ Buffer length ^ We already know where the string ends but we still
+                          check for this
 
       {[sha1:b3e687ba81093b2ee9abd135e4655697fb7819e4]19:This one has a sha1}
 

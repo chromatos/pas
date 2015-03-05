@@ -13,10 +13,10 @@ uses
   {$ENDIF}{$ENDIF}
   Classes, SysUtils, process, baseunix, CustApp, tubeyIRC, strutils, dateutils, kUtils,
   url_title4, textExtractors,
-  hives;
+  hives, urlstuff, tanks, termctl;
 
-const
-    hive_root = '/home/toobee/monopoly.bot/hives/';
+var
+    hive_root: string;
 
 type
     kBotMode = (bmStopped, bmRunning, bmRestarting);
@@ -70,7 +70,7 @@ var
 { tMonopolyBot }
 
 procedure tMonopolyBot.handleJoin(message: kIrcMessage);
-begin                                       writeln(storage.select_hive('.channels').search(message.channel));
+begin
     if message.user.nick = bot.me.nick then
     begin
         if storage.select_hive('.channels').search(message.channel) = '' then
@@ -99,9 +99,8 @@ procedure tMonopolyBot.showTitles(message: kIrcMessage);
 var z     : integer;
     x     : kPageList;
     flags : kSomeFlags;
-    caret : array[false..true] of string;// = ('^', '"');
-const
-    from_bot = 'Ignored bot links';
+    caret : array[kCacheStatus] of string;// = ('^', '"');
+
 
     function ignoreBots_and_stuff(): boolean;
   { I had to move this to its own function because random bits would cause
@@ -122,20 +121,15 @@ const
         if a.Count > 0 then
             for z:= 0 to a.Count-1 do
                 if lowerCase(a.Strings[z]) = b then
-                begin
-                    writeln(from_bot);
-                    exit
-                end;
+                    exit;
 
         b:= lowerCase(message.user.host);
         a := kList_hive(storage.select_hive('.bots.vhosts')).content;
         if a.Count > 0 then
             for z:= 0 to a.Count-1 do
                 if lowerCase(a.Strings[z]) = b then
-                begin
-                    writeln(from_bot);
-                    exit
-                end;
+                    exit;
+
         l:= length(message.message);
         z:= 1;
         while (not(message.message[z] in ['A'..'Z','a'..'z'])) and (z < 6) and (z < l) do
@@ -143,7 +137,6 @@ const
         dec(z);
         if z > 0 then
         begin
-            writeln(message.message[1..z]);
             if storage.content['.bots.prefixes/' + message.message[1..z], cp_Helmet] <> '' then
             begin
                 writeln('Ignored links sent to bot');
@@ -155,8 +148,6 @@ const
 
 begin
     flags:= [gtHttps, gtHttp];
-    caret[false]:= storage.select_hive('.config').items['caret_n'];
-    caret[true] := storage.select_hive('.config').items['caret_c'];
 
 {    if storage.select_hive('.titles.enabled').search(message.channel) = '' then
         exit;} // for absolutely no reason, this only works on my server and not soylent's
@@ -165,10 +156,21 @@ begin
 
     if ignoreBots_and_stuff() then
     begin
+    //  This is dumb:
+        caret[isNotCached]:= storage.select_hive('.config').items['caret_n'];
+        caret[isSeen]     := storage.select_hive('.config').items['caret_s'];
+        caret[isCached]   := storage.select_hive('.config').items['caret_c'];
+
         x:= getTitles(message.message, flags);
         if length(x) > 0 then
+        begin
             for z:= 0 to high(x) do
-                if x[z].title <> '' then bot.say(message.channel, caret[x[z].cached] + ' ' + mIRCcolor(clGreen) + clip_text(x[z].title, 480) + mIRCcolor(clNone));
+                if x[z].title <> '' then
+                    bot.say(message.channel, caret[x[z].cached] + ' ' + mIRCcolor(clGreen) + clip_text(x[z].title, 480) + mIRCcolor(clNone))
+                else
+                    bot.say(message.channel, caret[isNotCached] + ' [No title]')
+        end
+
     end
 end;
 
@@ -180,20 +182,21 @@ begin
     bot.me.nick    := h.items['me.nick'];
     bot.me.realName:= h.items['me.realname'];
     prefix         := h.items['prefix'];
-    save_interval  := strToInt(h.items['save_interval']);
+    save_interval  := StrToIntDef(h.items['save_interval'], 2);
     logFile        := h.items['logfile'];
 end;
 
 function tMonopolyBot.getAuthLevel(message: kIrcMessage): kRWModes;
 begin
-    if  (storage.select_hive('.config').items['owner.nick'] = message.user.nick)
-    and (storage.select_hive('.config').items['owner.vhost'] = message.user.host) then
+    if (storage.select_hive('.config').items['owner.nick'] = message.user.nick)
+    or (storage.select_hive('.config').items['owner.vhost'] = message.user.host) then
         result:= cp_DoubleHelmet
     else
-    if storage.select_hive('.config').search(message.user.nick) <> '' then
+    if (storage.select_hive('.bot.helmet.nicks').search(message.user.nick) <> '')
+    or (storage.select_hive('.bot.helmet.vhosts').search(message.user.host) <> '') then
         result:= cp_Helmet
     else
-        result:= cp_Plebes;
+        result:= cp_Plebes
 end;
 
 procedure tMonopolyBot.handleInvite(message: kIrcMessage);
@@ -270,8 +273,10 @@ begin
 
         'set': begin
                    a:= ExtractSubstr(buffer, z, [' ']);
+                   if (a[1..7] = '.config') and (auth <> cp_DoubleHelmet) then
+                       exit;
                    storage.content[a, auth]:= buffer[z..l];
-                   if a[1..7] = '.config' then
+                   if a[1..7] = '.config'then
                        doConfig;
                    k
                end;
@@ -356,10 +361,8 @@ begin
                           s:= split(' ', buffer);
                           if s.Count = 1 then
                           begin
-                              //a:= intToStr(storage.select_hive(s[0]).count);
                               if storage.del_hive(s[0]) then
                                   k
-//                                  reply('You just killed ' + a + 'bees')
                           end
                           else
                               reply('Requires exactly one parameters: hive_name')
@@ -378,6 +381,13 @@ begin
                               reply('Requires two parameters: old_name new_name')
                       end
                   end;
+        'auth'  : case auth of
+                      cp_Plebes      : reply('Pleb');
+                      cp_Helmet      : reply('Helmet');
+                      cp_DoubleHelmet: reply('Double helmet');
+                  else
+                      reply('How did you get this number?');
+                  end
         else
             bot.say(message.channel, storage.content['aliases/' + command, cp_No_touch]);
     end
@@ -397,25 +407,64 @@ var z   : integer = 3;
     b   : string  = '';
     up  : boolean = false;
     x   : tStringList;
+    isOK: kKeyValue;
 begin
     l   := length(message.message);
     up  := message.message[1] = '+';
     what:= lowerCase(ExtractSubstr(message.message, z, [' ']));
 
+    b:= storage.content['.karma.timeout/' + message.user.nick + '.' + what, cp_Helmet];
+    if b <> '' then
+    begin
+        isOK:= tank2keyvalue(b);
+
+        if isOK.key   = '' then
+        isOK.key  := DateTimeToStr(IncDay(now, -1), DefaultFormatSettings);
+
+        if isOK.value = '' then
+        isOK.value:= DateTimeToStr(IncDay(now, -1), DefaultFormatSettings);
+
+        if up then
+        begin
+            if SecondsBetween(now, StrToDateTime(isOK.key, DefaultFormatSettings)) < StrToIntDef(storage.content['.toyconfig/karma.up.timeout', cp_Helmet], 0) then
+                exit
+        end else
+        begin
+            if SecondsBetween(now, StrToDateTime(isOK.value, DefaultFormatSettings)) < StrToIntDef(storage.content['.toyconfig/karma.down.timeout', cp_Helmet], 0) then
+                exit
+        end
+    end
+    else
+    begin
+        isOK.key  := DateTimeToStr(IncDay(now, -1), DefaultFormatSettings);
+        isOK.value:= DateTimeToStr(IncDay(now, -1), DefaultFormatSettings)
+    end;
+
     if z < l then
         why:= message.message[z..l];
+
+{    if (what = 'coffee') and not(up) then
+    begin
+        what:= 'tea';
+        why := 'to spite ' + message.user.nick;
+        up  := true
+    end;}
 
     k:= StrToInt64Def(storage.content['karma/' + what, cp_Helmet], 0);
     if up then
     begin
+        isOK.key:= DateTimeToStr(now);
         inc(k);
         b:= 'up'
     end
     else
     begin
+        isOK.value:= DateTimeToStr(now);
         dec(k);
-        b:= 'down';
+        b:= 'down'
     end;
+
+    storage.content['.karma.timeout/' + message.user.nick + '.' + what, cp_Helmet]:= keyvalue2tanks(isOK);
     storage.content['karma/' + what, cp_Helmet]:= IntToStr(k);
 
     x:= split(#9, storage.content['karma.who.' + b + '/' + what, cp_Helmet]);
@@ -497,9 +546,7 @@ begin
                        else
                            bot.disconnect(pars);
                        mode:= bmRestarting;
-                   end;
-        'reload' : if auth < cp_Plebes then begin
-                       bot.say(message.channel, 'noctl');
+                       storage.content['.config/reboot_channel', cp_No_touch]:= message.channel
                    end;
         'kick'   : if (auth < cp_Plebes) and (pars <> '') then begin
                        stuff:= ExtractSubstr(pars, z, [' ']);
@@ -606,6 +653,12 @@ begin
                                bot.say(message.channel, 'No reason');
                        end
                    end;
+        'ident'   : begin
+                    if auth = cp_DoubleHelmet then
+                        bot.say('NickServ', 'identify '
+                      + storage.content['.config/nickserv.user', cp_No_touch] + ' '
+                      + storage.content['.config/nickserv.pass', cp_No_touch])
+                    end
         else
             do_hive_command(cmd, pars, message, auth);
     end
@@ -641,8 +694,16 @@ begin
         doKarma(message)
     else
         if length(message.message) > 5 then showTitles(message);
-    if (TextPos('bacon--', message.message) = 1) and (message.channel = '##') then
-        bot.say('##', 'bacon++ # bacon patrol');
+
+{    if storage.select_hive('.debug') <> nil then
+        with kList_hive(storage.select_hive('.debug')) do
+        begin
+            if content.count > 0 then
+                for l:= 0 to content.count-1 do
+                    bot.say(storage.content['.config/channel',cp_Helmet], content.Strings[l]);
+            clear
+        end
+}
 end;
 
 procedure tMonopolyBot.handleNotice(message: kIrcMessage);
@@ -664,8 +725,7 @@ end;
 
 procedure tMonopolyBot.handleKick(message: kIrcMessage);
 begin
-    if TextPos('/soylent/staff/', message.user.host) = 0 then
-        bot.join(message.channel)
+    bot.join(message.channel)
 end;
 
 procedure tMonopolyBot.handleConnect;
@@ -684,13 +744,7 @@ var
     buffer    : string;
     z         : dWord;
 begin
-    // quick check parameters
-    ErrorMsg:=CheckOptions('h','help');
-    if ErrorMsg<>'' then begin
-        ShowException(Exception.Create(ErrorMsg));
-        Terminate;
-        Exit;
-    end;
+
 writeln('Checking options');
     // parse parameters
     if HasOption('h','help') then begin
@@ -698,16 +752,21 @@ writeln('Checking options');
         Terminate;
         Exit;
     end;
+{    if hasOption('hiveroot') then
+        hive_root:= GetOptionValue('hiveroot')
+    else  }
+        hive_root:= '/home/toobee/monopoly.bot/hives/';
 
-writeln('Instantiating');
+writeln('Checking for hive cluster in ', hive_root);
     storage:= kHive_cluster.Create(true);
     if not FileExists(hive_root) then
     begin
-        writeln(stderr, 'MISSING HIVE, YO!');
+        writeln(stderr, 'MISSING HIVE CLUSTER, YO!');
         halt(-10000)
     end;
     storage.load(hive_root);
     url_title4.hive_cluster:= storage;
+    urlstuff.storage:= storage;
 
     save_ticker:= now;
 
@@ -735,15 +794,18 @@ writeln('Instantiating');
     bot.identString:= storage.content['.config/nickserv.user', cp_No_touch] + ' '
                     + storage.content['.config/nickserv.pass', cp_No_touch];
 
-    if not FileExists(logFile) then
-        logger:= tFileStream.Create(logFile, fmCreate or fmOpenWrite)
+    if logFile <> '' then
+        if not FileExists(logFile) then
+            logger:= tFileStream.Create(logFile, fmCreate or fmOpenWrite)
+        else
+            logger:= tFileStream.Create(logFile, fmOpenWrite)
     else
-        logger:= tFileStream.Create(logFile, fmOpenWrite);
+        writeln('Empty log filename');
 
     try
 writeln('Connecting');
         bot.connect(storage.content['.config/server.host', cp_No_touch]
-                                   , strToInt(storage.content['.config/server.port', cp_No_touch]));
+                                   , strToIntDef(storage.content['.config/server.port', cp_No_touch], 6969));
 //    else
 //        bot.connect(storage.content['.config/server.host', cp_No_touch]
 //                   ,strToInt(storage.content['.config/server.port', cp_No_touch])
@@ -757,7 +819,16 @@ writeln('Waiting on server');
     end;
 writeln('Connected!');
 
-    while mode = bmRunning do begin
+buffer:= storage.content['.config/reboot_channel', cp_No_touch];
+if buffer <> '' then
+begin
+    bot.say(buffer, 'k');
+    storage.content['.config/reboot_channel', cp_No_touch]:= ''
+end;
+
+
+    while mode = bmRunning do
+    begin
         bot.doThings;
 
         if MinutesBetween(now, save_ticker) >= save_interval then
@@ -767,6 +838,7 @@ writeln('Connected!');
         end;
         sleep(69)
     end;
+
 writeln('Exited main loop');
 
     // stop program loop
@@ -789,7 +861,7 @@ end;
 constructor tMonopolyBot.Create(TheOwner: TComponent);
 begin
     inherited Create(TheOwner);
-    StopOnException :=True
+    StopOnException :=true
 end;
 
 destructor tMonopolyBot.Destroy;

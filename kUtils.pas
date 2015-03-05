@@ -57,6 +57,8 @@ function  reverse             (buffer: string): string;
 function  file2string         (fileName: string): string;
 procedure string2File         (filename, buffer: string; append: boolean = false);
 
+function  string2KeyValue     (buffer, delimiter: string): kKeyValue;
+
 function  string2KeyValue     (buffer: string): kKeyValue;
 function  keyValue2String     (kv: kKeyValue): string;
 
@@ -454,6 +456,23 @@ begin
         split_by_sequence.Append(ExtractSubstr(buffer, z, [sequence[y]]));
 
     split_by_sequence.Append(buffer[z..length(buffer)])
+end;
+
+function string2KeyValue(buffer, delimiter: string): kKeyValue;
+var z: integer;
+begin
+    z:= pos(delimiter, buffer);
+    if z > 0 then
+    begin
+        result.key:= buffer[1..z-1];
+        if z < length(buffer) then
+            result.value:= buffer[z+length(delimiter)..length(buffer)];
+    end
+    else
+    begin
+        result.key  := buffer;
+        result.value:= ''
+    end
 end;
 
 function string2KeyValue(buffer: string): kKeyValue;

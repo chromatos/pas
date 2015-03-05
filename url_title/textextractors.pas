@@ -16,7 +16,7 @@ unit textExtractors;
 interface
 
 uses
-    Classes, SysUtils, tanks;
+    Classes, SysUtils, tanks, termctl;
 
 
 type
@@ -24,6 +24,7 @@ type
     kFileProperties = set of kFileProperty;
     kRequestResult  = (isOK, isTooRedirectish, isNotFound, isNothing);
     kTitleType      = (isTitle, isSummary, isFirstLine, isSNsummary);
+    kCacheStatus    = (isNotCached, isSeen, isCached);
 
     kSiteType       = (siWhatever, siSoyMain, siSoyComment, siSoyArticle, siSoyPoll, siSoySub, siYouTube, siPedia, siPipeArticle, siPipeComment);
     kSiteFlags      = set of (sfTMBdev, sfDev, sfJournal, sfSubmission);
@@ -41,12 +42,10 @@ type
         refreshed,
         last_emitted: TDate;
         redirects   : word;
-        cached      : boolean;
+        cached      : kCacheStatus;
     end;
 
     kPageList = array of kpageInfo;
-
-    tColor          = (clNone, clBlack, clBlue, clGreen, clRed, clBrown, clMagenta, clOrange, clYellow, clLtGreen, clCyan, clLtCyan, clLtBlue,clLtMagenta,clLtGray,clGray,clWhite);
 
 procedure getSoylentComment   (flags: kSiteFlags; var info: kpageInfo);
 procedure getSoylentArticle   (flags: kSiteFlags; var info: kpageInfo);
@@ -216,6 +215,12 @@ begin
     z:= Pos('<div class="article"', info.content);
     if z < 1 then begin
         z:= Pos('<div id="journal', info.content);
+    end;
+
+    if z < 1 then
+    begin
+        getXMLtitle(info);
+        exit
     end;
 
     z:= PosEx('<h3', info.content, z);
