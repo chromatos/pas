@@ -731,6 +731,7 @@ end;
 procedure tMonopolyBot.handleConnect;
 begin
     mode:= bmRunning;
+    buttmagic(); // divine what our nick should be when connecting to bouncers that don't tell us
 end;
 
 procedure tMonopolyBot.handleDisconnect;
