@@ -23,9 +23,10 @@ uses
     Classes, SysUtils, contnrs;
 
 type
-    kRWModes = (cp_No_touch, // don't let strangers touch this
-                cp_Helmet,   // 'special' people, like admins
-                cp_Plebes);  // anyone can poke this
+    kRWModes = (cp_No_touch,     // don't let strangers touch this
+                cp_DoubleHelmet, // owner
+                cp_Helmet,       // 'special' people, like admins
+                cp_Plebes);      // anyone can poke this
 
     kHivePermissions = record
         r,
@@ -255,9 +256,10 @@ function resolve_path(path: string): kKeyValue;
 function perm2string(perm: kRWModes): string;
 begin
     case perm of
-        cp_No_touch: result:= 'none';
-        cp_Helmet  : result:= 'some';
-        cp_Plebes  : result:= 'everyone';
+        cp_No_touch    : result:= 'none';
+        cp_DoubleHelmet: result:= 'one';
+        cp_Helmet      : result:= 'some';
+        cp_Plebes      : result:= 'everyone';
     else
         result:= 'none' // Err on the side of caution. The constructor is
                         // supposed to be filling this in; it's not
@@ -274,6 +276,7 @@ function str2perm(aString: string): kRWModes;
 begin
     case lowerCase(aString) of
         'none'    : result:= cp_No_touch;
+        'one'     : result:= cp_DoubleHelmet;
         'some'    : result:= cp_Helmet;
         'everyone': result:= cp_Plebes;
     end
@@ -598,7 +601,7 @@ begin
         if aHive <> nil then
             aHive.to_console
         else
-            writeln('Hive "', hive, '" does not exist; can''t dump!')
+            lastError:= 'Hive "' + hive + '" does not exist; can''t dump!'
     end else begin
         writeln('No hive specified; dumping entire hive cluster');
         for z:= 0 to Count-1 do

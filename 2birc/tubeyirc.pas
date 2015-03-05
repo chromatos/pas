@@ -39,6 +39,8 @@ type
     kEvent        = procedure of object;
 
 
+    { kIRCclient }
+
     kIRCclient = class(TComponent)
       public
         me          : kIrcUser;       // Your user info
@@ -94,6 +96,7 @@ type
         procedure       setMode           (channel, mode, what: string);
 
         procedure       connect           (host   : string; port: word);
+        procedure       connect           (host: string; port: word; aSocket: integer);
         procedure       disconnect        (message: string = '');
 
         function        escapeString      (message: string): string;
@@ -169,7 +172,7 @@ end;
 destructor kIRCclient.destroy;
 begin
     if theSocket <> nil then
-        theSocket.Free;  thesocket.getRootSock;
+        theSocket.Free;
     channels.Free;
     inherited
 end;
@@ -204,7 +207,7 @@ begin
     doSend   (theSocket.Iterator);
 end;
 
-procedure kIrcClient.handleError(const msg: string; aSocket: TLSocket);
+procedure kIRCclient.handleError(const msg: string; aSocket: TLSocket);
 var z: string;
 begin
     z:= 'Err ['
@@ -369,7 +372,14 @@ begin
                    ,theSocket.Iterator);
 end;
 
-procedure kIrcclient.connected(aSocket:tLSocket);
+procedure kIRCclient.connect(host: string; port: word; aSocket: integer);
+begin
+    if not theSocket.Connect_r(host, port, aSocket) then
+        handleError('Err: Could not resume connection to host'
+                   ,theSocket.Iterator);
+end;
+
+procedure kIRCclient.connected(aSocket: tLsocket);
 begin
     writeString('NICK ' + me.nick);
     writeString('USER '
@@ -381,7 +391,7 @@ begin
         onConnect
 end;
 
-procedure kIRCclient.disconnected(aSocket: TLSocket);
+procedure kIRCclient.disconnected(aSocket: tLsocket);
 begin
     if autoReconnect then
         connect(aSocket.PeerAddress, aSocket.PeerPort)
@@ -400,7 +410,7 @@ begin
     end
 end;
 
-function kIrcClient.escapeString(message: string): string;
+function kIRCclient.escapeString(message: string): string;
 { This is mainly for ctcp stuff }
 var z   : dWord = 1;
     y   : dWord;
@@ -427,7 +437,7 @@ begin
     end
 end;
 
-function kIrcClient.unEscapeString(message: string): string;
+function kIRCclient.unEscapeString(message: string): string;
 { Also for ctcp }
 var z   : dWord = 1;
     y   : dWord;
@@ -455,48 +465,47 @@ begin
     end
 end;
 
-procedure kIrcClient.join(channel: string);
+procedure kIRCclient.join(channel: string);
 var
     z: integer;
 begin
         writeString('JOIN ' + channel)
 end;
 
-procedure kIrcClient.join(channelList: tStringList);
+procedure kIRCclient.join(channelList: tStringList);
 var z: dWord;
 begin
-    for z:= 0 to channelList.Count-1 do
-        join(channelList.Strings[z])
+    join(join_stringList(',', channelList))
 end;
 
-procedure kIrcClient.part(channel: string; reason: string = '');
+procedure kIRCclient.part(channel: string; reason: string);
 var
     z: integer;
 begin
         writeString('PART ' + channel + ' :' + reason)
 end;
 
-procedure kIrcClient.kick(channel, user: string; reason: string = '');
+procedure kIRCclient.kick(channel, user: string; reason: string);
 begin
     writeString('KICK ' + channel + ' ' + user + ' ' + reason)
 end;
 
-procedure kIrcClient.ban(channel, mask: string);
+procedure kIRCclient.ban(channel, mask: string);
 begin
     setMode(channel, '+b', mask)
 end;
 
-procedure kIrcClient.unban(channel, mask: string);
+procedure kIRCclient.unban(channel, mask: string);
 begin
     setMode(channel, '-b', mask)
 end;
 
-procedure kIrcClient.setTopic(channel, topic: string);
+procedure kIRCclient.setTopic(channel, topic: string);
 begin
     writeString('TOPIC ' + channel + ' :' + topic)
 end;
 
-procedure kIrcClient.setMode(channel, mode, what: string);
+procedure kIRCclient.setMode(channel, mode, what: string);
 begin
     writeString('MODE ' + channel + ' ' + mode + ' ' + what)
 end;

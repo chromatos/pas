@@ -377,34 +377,14 @@ end;
 
 function split(delimiter: char; yourString: string): tStringList;
 var z,
-    y: integer;
     l: integer;
 begin
     z:= 1;
-    result              := tStringList.Create;
+    result:= tStringList.Create;
 
     l:= length(yourString);
     while z < l do
         result.Append(ExtractSubstr(yourString, z, [delimiter]));
-{        if yourString[z] in [delimiter] then inc(y)
-    end;
-    if y > 1 then
-    begin
-        z:= 0;
-        y:= 1;
-    while z <= length(yourString) do
-    begin
-        inc(z);
-            if yourString[z] in [delimiter] then
-            begin
-                result.Append(yourString[y..z-1]);
-                inc(z);
-                y:= z
-            end else
-            if z = length(yourString) then
-                result.Append(yourString[y..z])
-        end
-    end}
 end;
 
 

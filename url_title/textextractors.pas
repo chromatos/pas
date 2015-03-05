@@ -248,7 +248,7 @@ begin
     if sfDev     in flags then info.title+= '(dev) ';
     if sfTMBDev  in flags then info.title+= '(TMB dev) ';
     if sfJournal in flags then info.title+= 'journal '
-    else info.title+= 'article ';
+    else info.title+= 'article: '+mIRCcolor(clNone);
 
     info.title+= reduce_white_space(title)
 end;
@@ -277,7 +277,7 @@ begin
     z:= PosEx('<b', info.content, z);
     z:= PosEx('>', info.content, z) + 1;
 
-    who:= trim(resolveXMLents(stripHTML(extract_subStr(info.content, z, '</b'))));
+    who:= trim(resolveXMLents(stripHTML(extract_subStr(info.content, z, '<'))));
 
 
     { Summary }
@@ -298,14 +298,14 @@ begin
     if sfDev    in flags then info.title+= '(dev) ';
     if sfTMBDev in flags then info.title+= '(TMB dev) ';
 
-    info.title+= reduce_white_space('Submission by ' + who + ' ' + title)
+    info.title+= reduce_white_space('Submission by ' + who + ': ' + mIRCcolor(clNone) + title)
 end;
 
 
 procedure getWikiTextia(anchor: string; var info: kpageInfo);
 var z      : integer = 0;
 begin
-    info.title:= 'Wiki: ';
+    info.title:= 'Wiki: ' + mIRCcolor(clNone);
     z:= PosEx('id="firstHeading"', info.content, 1);
     if z < 1 then
         z:= PosEx('id="section_0"', info.content, z);
@@ -469,22 +469,26 @@ procedure getXMLtitle(var info: kpageInfo);
 var z: integer = 0;
 begin
     z:= TextPos('<title', info.content);
-    if z > 0 then begin
+    if z > 0 then
+    begin
         z:= PosEx('>', info.content, z) + 1;
 
-        info.title:= cleanHTMLForIRC(extract_subStr(info.content, z, '</title'));
+        info.title:= cleanHTMLForIRC(extract_subStr(info.content, z, '</'));
 
         z:= TextPos('="og:description"',info.content);
-        if z > 0 then begin
+        if z > 0 then
+        begin
             while (info.content[z] <> '<') and (z > 1) do
                 dec(z);
             extract_subStr(info.content, z, 'content="');
             z:= PosEx('"', info.content, z) + 1;
 
             info.description:= ': ' + cleanHTMLForIRC(ExtractSubstr(info.content, z, ['"']))
-        end else begin
-        z:= TextPos('name="description"',info.content);
-        if z > 0 then begin
+        end else
+        begin
+            z:= TextPos('name="description"',info.content);
+            if z > 0 then
+            begin
                 while (info.content[z] <> '<') and (z > 1) do
                     dec(z);
                 extract_subStr(info.content, z, 'content="');

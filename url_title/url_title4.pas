@@ -51,10 +51,7 @@ begin
     result:= not x
 end;
 
-//function doRequest(var uri: string; baseName: string; out props: kFileProperties; out buffer: string; out contentType: string; out redirects: byte): kRequestResult;
 function doRequest(var aSite: kpageInfo; baseName: string; out props: kFileProperties): kRequestResult;
-//const
-//    uaString = 'Mozilla/5.0 (netctl; X11; Linux x86_64; rv:24.7) Gecko/20140911 Firefox/24.7';
 var aFile   : tStringList;
     z       : dWord;
     final   : boolean = false;
@@ -70,7 +67,7 @@ begin
             result:= isNothing;
             exit
         end;
-        fpSystem('curl -m 8 -x "http://10.10.9.254:3128" -A "' + hive_cluster.content['.config/user_agent', cp_No_touch]
+        fpSystem('curl -g -m 8 -x "http://10.10.9.254:3128" -A "' + hive_cluster.content['.config/user_agent', cp_No_touch]
                + '" -k -s -D ' + baseName + '.head "' + aSite.url + '" > ' + baseName + '.body');
         if not (FileExists(baseName + '.head') and FileExists(baseName + '.body')) then begin
             result:= isNotFound;
