@@ -1,3 +1,6 @@
+{ License: wtfpl; see /copying or the Internet }
+
+{ Provides a dictionary/associative array ancestor class }
 unit dictionary;
 
 {$mode objfpc}{$H+}
@@ -365,3 +368,4 @@ begin
 end;
 
 end.
+

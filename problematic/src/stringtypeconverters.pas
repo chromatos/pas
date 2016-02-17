@@ -1,3 +1,7 @@
+{ License: wtfpl; see /copying or the Internet }
+
+{ Functions to help convert parameter values }
+
 unit stringtypeconverters;
 
 {$mode objfpc}{$H+}
@@ -81,3 +85,4 @@ end;
 
 
 end.
+

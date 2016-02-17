@@ -1,0 +1,151 @@
+Strings unit:
+
+pos(Needle, Haystack, ...)
+	Find the position of a Needle within Haystack. Haystacks are contacenated into a huge string. If more than one Needle is supplied, then the position of each Needle is returned in a series. If no substrings are found, -1 is returned.
+
+join(Delimiter, String, String, ...)
+join(Delimiter, Series, ...)
+	join Strings, separated by Delimiter. If only one String is supplied, it will just be returned by itself.
+
+cat(String, String, ...)
+cat(Series, ...)
+	Concatenates strings together. This is pretty much useless because you can just put them next to each other for the same result (for example: "hunter" "2" will return "*******").
+
+reverse(String, ...)
+reverse(Series, ...)
+	Reverses each String individually and returns a Series.
+
+len(String, ...)
+len(Series, ...)
+	Returns the total length of all Strings supplied.
+
+var(String, ...)
+	Treats each String as a variable name and attempts to append its contents to the return value. For each non-existent variable, nothing is added to the result.
+
+count(Series, ...)
+	Counts all supplied Series (and Strings). If more than one parameter is supplied, then each will have its own count returned in a series.
+
+upperCase(String, ...)
+upperCase(Series, ...)
+	Returns a series of UPPER-CASEd Strings.
+
+lowerCase(String, ...)
+lowerCase(Series, ...)
+	Returns a series of lower-cased Strings.
+
+replace(OldString, NewString, Content, ...)
+replace(OldSeries, NewSeries, Content, ...)
+	Searches Content and replaces all instances of OldString with NewString.
+	
+	If OldSeries and NewSeries are of the same count, a one-for-one replacement will be attempted. If NewSeries is shorter than OldSeries, then the last string in NewSeries will be used for the remainder of OldSeries matches. When strings from OldSeries, the replacement ends, even if NewSeries has additional strings.
+
+substr(Offset, Length, String, ...)
+substr(Offset, Length, Series, ...)
+	Returns a series of substrings as you'd expect. Strings are 1-indexed. To start from the end of a string, use a negative offset.
+
+delete(Unwanted, String, ...)
+delete(Unwanted, Series, ...)
+	Returns a series with all instances of Unwanted deleted from String. If Unwanted is a series, then each of its strings will be deleted in turn, as if nested delete()s were called.
+
+Math unit:
+Unless it doesn't make sense, you can assume passing extra parameters will repeat the operation between each input and the result of the previous one.
+
+For aggregate functions (like sum or mean), all parameters are merged into a series and return a single value.
+
+Non-numeric strings count as 0.
+
+sum(Number, Number, ...)
+	Sums all input values.
+
+avg(Number, Number, ...)
+	Returns the mean of all input values.
+
+median(Number, Number, ...)
+	Returns the median of all inpt values.
+
+mode(Number, Number, ...)
+	Returns the mode of all input values.
+
+div(Number, Number, ...)
+	Divides the parameters by each other in order. If a 0 gets mixed in, ∞ is returned.
+
+mult(Number, Number, ...)
+	Multiples the parameters with each other.
+
+sub(Number, Number, ...)
+	Subtracts the numbers from each other in order.
+
+min(Number, Number, ...)
+	Returns the minimum input value.
+
+max(Number, Number, ...)
+	Returns the maximum input value.
+
+Series functions:
+
+sort(Series, ...)
+	Returns all series merged and sorted.
+
+unique(Series, ...)
+	Removes duplicate Strings from Series.
+
+
+
+Bits unit:
+Unless it doesn't make sense, you can assume passing extra parameters will repeat the operation between each input and the result of the previous one.
+
+xor(string, string, ...)
+	Bitwise-XOR strings together, merging each one with the previous.
+
+and(string, string, ...)
+	Bitwise-AND strings together, merging each one with the previous.
+
+or(string, string, ...)
+	Bitwise-OR strings together, merging each one with the previous.
+	
+nand(string, string, ...)
+	Bitwise-NAND strings together, merging each one with the previous.
+
+not(string, string, ...)
+	Concatenate strings and invert their bits.
+
+
+Logical operators:
+Like anywhere else, these are the same as bitwise operators, but treat each whole operand as a single bit. "False", "NaN", 0, 0.0 (et cetera) and empty strings all count as False, while any other string or numeric value counts as true.
+
+Operations are shortcut evaluated if possible, meaning if the result can be derived from the left side (for example, if it's True in an OR operation) then the right side won't be evalated; if there's a function call, it will be entirely skipped.
+
+ &  And
+!&  Nand
+ |  Or
+!|  Nor
+^|  XOr
+ !  Not
+ =  Equal
+!=  Not Equal
+ >  Greater than
+ <  Less than
+>=  Greater-than-or-equal-to
+<=  Less-than-or-equal-to
+
+
+if(Boolean, True_Value, False_Value)
+	Returns False_Value if Boolean is 0 or an empty string; otherwise returns True_Value.
+
+coalesce(String, String, ...)
+	Returns the first non-empty string.
+
+Crypt unit:
+
+rot13(string, string, ...)
+	Concatenate strings and rot13 encode them.
+
+
+
+
+
+
+irc unit:
+
+say(Channel, message, message, ...)
+	Concatenate messages and send them to Channel.
